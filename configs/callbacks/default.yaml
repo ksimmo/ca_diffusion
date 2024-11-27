@@ -1,0 +1,9 @@
+defaults:
+  - model_checkpoint
+  - _self_
+
+model_checkpoint:
+  dirpath:
+  filename: "epoch_{epoch:08}"
+  save_last: True
+  verbose: True
