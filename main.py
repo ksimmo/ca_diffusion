@@ -14,7 +14,7 @@ def main(cfg: DictConfig):
     seed_everything(cfg.get("seed", 42), workers=True) #set random seed for reproducibility
 
     #instantiate model
-    model = instantiate(cfg.model)
+    #model = instantiate(cfg.model)
 
     #instantiate callbacks -> we can have multiple ones
     callbacks_cfg = cfg.get("callbacks", None)
@@ -37,12 +37,15 @@ def main(cfg: DictConfig):
             logger = None
 
     #instantiate dataset
-    datamodule = instantiate(cfg.data)
-    datamodule.setup(stage="")
+    #datamodule = instantiate(cfg.data)
+    #datamodule.setup(stage="")
+
+    #set up strategy if necessary
+
 
     trainer = Trainer(cfg.trainer, callbacks=callbacks, logger=logger)
 
-    trainer.fit(model, datamodule, ckpt_path=None)
+    #trainer.fit(model, datamodule, ckpt_path=None)
 
 ##########################
 if __name__ == "__main__":

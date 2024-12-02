@@ -1,5 +1,6 @@
 defaults:
   - model_checkpoint
+  - cuda
   - _self_
 
 model_checkpoint:
