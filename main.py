@@ -18,23 +18,21 @@ def main(cfg: DictConfig):
 
     #instantiate callbacks -> we can have multiple ones
     callbacks_cfg = cfg.get("callbacks", None)
+    callbacks = None
     if callbacks_cfg is not None:
         if isinstance(callbacks_cfg, DictConfig):
             callbacks = []
             for k, v in callbacks_cfg.items():
-                callbacks.append(instantiate(cfg.logger))
-        else:
-            callbacks = None
+                callbacks.append(instantiate(v))
 
     #instantiate logger -> we can have multiple ones
     logger_cfg = cfg.get("logger", None)
+    logger = None
     if logger_cfg is not None:
         if isinstance(logger_cfg, DictConfig):
             logger = []
             for k, v in logger_cfg.items():
-                logger.append(instantiate(cfg.logger))
-        else:
-            logger = None
+                logger.append(instantiate(v))
 
     #instantiate dataset
     #datamodule = instantiate(cfg.data)
@@ -43,7 +41,7 @@ def main(cfg: DictConfig):
     #set up strategy if necessary
 
 
-    trainer = Trainer(cfg.trainer, callbacks=callbacks, logger=logger)
+    trainer = Trainer(callbacks=callbacks, logger=logger, **cfg.trainer)
 
     #trainer.fit(model, datamodule, ckpt_path=None)
 

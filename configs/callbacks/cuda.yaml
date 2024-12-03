@@ -1,3 +1,2 @@
 cuda_callback:
   _target_: ca_diffusion.callbacks.CUDACallback
-  
