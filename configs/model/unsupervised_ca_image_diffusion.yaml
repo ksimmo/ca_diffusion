@@ -1,0 +1,17 @@
+_target_: ca_diffusion.models.diffusion_unsupervised.DiffusionModel
+
+model:
+  _target_: ca_diffusion.modules.networks.diffusion.unet
+  channels_in: 1
+  channels: 64
+  channels_emb: 512
+  channels_out: 1
+  channel_mult: [2,4,4,8]
+  num_blocks: 2
+  attn_res: [4,-1]
+  num_heads: 8
+  qkv_bias: True
+  qk_norm: True
+  channels_freq: 256
+  compile: True
+  use_checkpoint: False

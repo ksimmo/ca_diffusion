@@ -67,8 +67,8 @@ class TimestepEmbedder(nn.Module):
         
 
 class UNet(nn.Module):
-    def __init__(self, channels_in, channels, channels_emb, channels_out=None, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8,
-                 channels_freq=256):
+    def __init__(self, channels_in, channels, channels_emb, channels_out=None, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True,
+                 channels_freq=256, compile=True, use_checkpoint=False):
         super().__init__()
 
         channels_out = channels_in if channels_out is None else channels_out
@@ -87,41 +87,41 @@ class UNet(nn.Module):
             channels_b = self.channel_mult[i+1]*channels
 
             for j in range(num_blocks):
-                self.downblocks.append(ResnetBlock2D(channels_a, channels_a, mode="default", channels_emb=channels_emb))
+                self.downblocks.append(ResnetBlock2D(channels_a, channels_a, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
                 #self.skips.append()
                 if i+1 in attn_res:
-                    self.downblocks.append(Attention2D(channels_a, num_heads=num_heads))
-            self.downblocks.append(ResnetBlock2D(channels_a, channels_b, mode="down", channels_emb=channels_emb))
+                    self.downblocks.append(Attention2D(channels_a, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
+            self.downblocks.append(ResnetBlock2D(channels_a, channels_b, mode="down", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
             #self.skips.append()
 
         for j in range(num_blocks):
-            self.downblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb))
+            self.downblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
             #self.skips.append()
             if -1 in attn_res:
-                self.downblocks.append(Attention2D(channels_b, num_heads=num_heads))
+                self.downblocks.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
 
 
         self.bottleneck = nn.ModuleList()
-        self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb))
+        self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
         if -1 in attn_res:
-            self.bottleneck.append(Attention2D(channels_b, num_heads=num_heads))
-        self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb))
+            self.bottleneck.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
+        self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
 
 
         self.upblocks = nn.ModuleList()
         for j in range(num_blocks+1):
-            self.upblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb))
+            self.upblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
             if -1 in attn_res:
-                self.upblocks.append(Attention2D(channels_b, num_heads=num_heads))
+                self.upblocks.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
         for i in reversed(range(len(self.channel_mult)-1)):
             channels_b = self.channel_mult[i]*channels
             channels_a = self.channel_mult[i+1]*channels
 
-            self.upblocks.append(ResnetBlock2D(channels_a, channels_b, mode="up", channels_emb=channels_emb))
+            self.upblocks.append(ResnetBlock2D(channels_a, channels_b, mode="up", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
             for j in range(num_blocks+1):
-                self.upblocks.append(ResnetBlock2D(channels_b*2, channels_b, mode="default", channels_emb=channels_emb))
+                self.upblocks.append(ResnetBlock2D(channels_b*2, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
                 if i+1 in attn_res:
-                    self.upblocks.append(Attention2D(channels_b, num_heads=num_heads))
+                    self.upblocks.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
 
         self.proj_out = nn.Sequential(nn.GroupNorm(32, channels), nn.SiLU(), zero_init(nn.Conv2d(channels, channels_out, kernel_size=3, stride=1, padding=1, bias=True)))
 

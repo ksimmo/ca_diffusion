@@ -1,7 +1,7 @@
 #single run mode
 run: 
-  dir: ${paths.log_dir}/runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  dir: ${paths.log_dir}/runs/{$tag}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 #multirun
 sweep:
-  dir: ${paths.log_dir}/multiruns/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  dir: ${paths.log_dir}/multiruns/{$tag}/${now:%Y-%m-%d}/${now:%H-%M-%S}
   subdir: ${hydra.job.num}
