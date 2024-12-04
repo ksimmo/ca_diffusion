@@ -41,6 +41,7 @@ class ResnetBlock2D(nn.Module):
 
         self.use_checkpoint = use_checkpoint
         self.scale_shift_norm = scale_shift_norm
+        self.mode = mode
 
         if mode not in ["default", "up", "down"]:
             raise NotImplementedError("ResnetBlock mode {} is not supported!".format(mode))

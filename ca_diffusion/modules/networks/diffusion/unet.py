@@ -3,11 +3,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from ca_diffusion.modules.utils import zero_init
 from ca_diffusion.modules.conv.blocks import ResnetBlock2D, Attention2D
 
 
 class Encoder(nn.Module):
-    def __init__(self, channels_in, channels, z_channels, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8):
+    def __init__(self, channels_in, channels, channels_z, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8):
         super().__init__()
 
         self.channel_mult = [1] + channel_mult
@@ -31,14 +32,16 @@ class Encoder(nn.Module):
             if num_blocks in attn_res:
                 self.downblocks.append(Attention2D(channels_b, num_heads=num_heads))
         self.downblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default"))
-        #self.downblocks.append(nn)
+        
+        self.proj_out = nn.Sequential(nn.GroupNorm(32, channels_b), nn.SiLU(),
+                                      nn.Conv2d(channels_b, channels_z, kernel_size=3, stride=1, padding=1, bias=True))
 
 
     def forward(self, x):
         x = self.proj_in(x)
         for block in self.downblocks:
             x = block(x)
-        return x
+        return self.proj_out(x)
 
         
 
@@ -90,11 +93,35 @@ class UNet(nn.Module):
 
             self.upblocks.append(ResnetBlock2D(channels_a, channels_b, mode="up", channels_emb=channels_emb))
             for j in range(num_blocks+1):
-                self.upblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb))
+                self.upblocks.append(ResnetBlock2D(channels_b*2, channels_b, mode="default", channels_emb=channels_emb))
                 if i+1 in attn_res:
                     self.upblocks.append(Attention2D(channels_b, num_heads=num_heads))
 
-        self.proj_out = nn.Sequential(nn.GroupNorm(32, channels), nn.SiLU(), nn.Conv3d(channels, channels_out, kernel_size=3, stride=1, padding=1, bias=True))
+        self.proj_out = nn.Sequential(nn.GroupNorm(32, channels), nn.SiLU(), zero_init(nn.Conv3d(channels, channels_out, kernel_size=3, stride=1, padding=1, bias=True)))
 
     def forward(self, x, t):
-        pass
+        
+        emb = None
+
+        x = self.proj_in(x)
+
+        skips = [x]
+        for block in self.downblocks:
+            x = block(x, emb)
+            if not isinstance(block, Attention2D):
+                skips.append(x)
+        x = self.bottleneck(x)
+
+        for block in self.upblocks:
+            if isinstance(block, Attention2D):
+                x = block(x, emb)
+            elif hasattr(block, "mode"):
+                if block.mode=="up":
+                    x = block(x, emb)
+            else:
+                x = torch.cat([x, skips.pop()], dim=1)
+                x = block(x, emb)
+        
+        x = self.proj_out(x)
+
+        return x
