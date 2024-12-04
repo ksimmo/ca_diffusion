@@ -17,7 +17,7 @@ class RMSNorm(nn.Module):
         super().__init__()
 
         self.eps = eps
-        self.scale = nn.Linear()
+        self.scale = nn.Parameter(torch.ones(channels))
 
     def forward(self, x):
         return rms_norm(x, self.scale, self.eps)

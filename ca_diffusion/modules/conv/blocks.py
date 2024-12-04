@@ -14,6 +14,7 @@ class Downsample(nn.Module):
 
         self.pad = (len(f) - 1) // 2
 
+        f = np.array(f)
         f = f/f.sum()
         weights = torch.FloatTensor(np.outer(f,f))
         self.register_buffer("weights", weights.unsqueeze(0).unsqueeze(0))
@@ -27,6 +28,7 @@ class Upsample(nn.Module):
 
         self.pad = (len(f) - 1) // 2
 
+        f = np.array(f)
         f = f/f.sum()
         weights = torch.FloatTensor(np.outer(f,f)*4.0)
         self.register_buffer("weights", weights.unsqueeze(0))
@@ -53,16 +55,16 @@ class ResnetBlock2D(nn.Module):
             blocks_in += [Downsample()]
         blocks_in += [nn.Conv2d(channels_in, channels_out, kernel_size=3, stride=1, padding=1, bias=True)]
         if self.scale_shift_norm:
-            blocks_in += [nn.GroupNorm(num_groups, channels_in)]
+            blocks_in += [nn.GroupNorm(num_groups, channels_out)]
         self.blocks_in = nn.Sequential(*blocks_in)
 
         self.emb_layers = None
         if channels_emb is not None:
-            self.emb_layers = nn.Linear(channels_emb, channels_out*2 if scale_shift_norm else channels_out)
+            self.emb_layers = nn.Linear(channels_emb, channels_out*2 if scale_shift_norm else channels_out, bias=True)
 
         blocks_out = []
         if not self.scale_shift_norm:
-            blocks_out += [nn.GroupNorm(num_groups, channels_in)]
+            blocks_out += [nn.GroupNorm(num_groups, channels_out)]
         blocks_out += [nn.SiLU(), nn.Dropout(dropout),
                       zero_init(nn.Conv2d(channels_out, channels_out, kernel_size=3, stride=1, padding=1, bias=True))]
         self.blocks_out = nn.Sequential(*blocks_out)
@@ -90,7 +92,7 @@ class ResnetBlock2D(nn.Module):
             emb = self.emb_layers(emb)
             emb = shape_val(emb, h, -1)
             if self.scale_shift_norm:
-                scale, shift = emb.split(2, dim=1)
+                scale, shift = emb.chunk(2, dim=1)
                 h = h*(1.0+scale)+shift
             else:
                 h = h+emb

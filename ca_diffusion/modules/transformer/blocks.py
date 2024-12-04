@@ -13,7 +13,7 @@ class AttentionBlock(nn.Module):
         self.norm = RMSNorm(channels, eps=eps)
         self.attention = CrossAttention(channels, num_heads=num_heads, eps=eps, **attention_kwargs)
 
-        self.forward = compile(self.forward)
+        self.forward = torch.compile(self.forward)
 
     def forward(self, x):
         h = self.attention(self.norm(x))
@@ -26,7 +26,7 @@ class FeedForwardBlock(nn.Module):
         self.norm = RMSNorm(channels, eps=eps)
         self.feedforward = FeedForward(channels, **ff_kwargs)
 
-        self.forward = compile(self.forward, fullgraph=True)
+        self.forward = torch.compile(self.forward, fullgraph=True)
 
     def forward(self, x):
         h = self.feedforward(self.norm(x))
