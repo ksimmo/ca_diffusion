@@ -13,37 +13,31 @@ def main(cfg: DictConfig):
 
     seed_everything(cfg.get("seed", 42), workers=True) #set random seed for reproducibility
 
-    #instantiate model
-    #model = instantiate(cfg.model)
+    #instantiate model we want to train
+    model = instantiate(OmegaConf.to_container(cfg.model))
 
-    #instantiate callbacks -> we can have multiple ones
-    callbacks_cfg = cfg.get("callbacks", None)
-    callbacks = None
-    if callbacks_cfg is not None:
-        if isinstance(callbacks_cfg, DictConfig):
-            callbacks = []
-            for k, v in callbacks_cfg.items():
-                callbacks.append(instantiate(v))
+    #instantiate dataset we use for training and maybe validation
+    datamodule = instantiate(OmegaConf.to_container(cfg.data))
+    datamodule.setup(stage="")
 
-    #instantiate logger -> we can have multiple ones
-    logger_cfg = cfg.get("logger", None)
-    logger = None
-    if logger_cfg is not None:
-        if isinstance(logger_cfg, DictConfig):
-            logger = []
-            for k, v in logger_cfg.items():
-                logger.append(instantiate(v))
+    #set up trainer
+    trainer_kwargs = instantiate(cfg.trainer)
+    #trainer requires list instead of configs for some arguments
+    #-> remove and convert them and manually add to trainer
+    callbacks = trainer_kwargs.pop("callbacks", None)
+    if isinstance(callbacks, DictConfig):
+        callbacks = [callbacks[k] for k in callbacks.keys()]
+    logger = trainer_kwargs.pop("logger", None)
+    if isinstance(logger, DictConfig):
+        logger = [logger[k] for k in logger.keys()]
+    plugins = trainer_kwargs.pop("plugins", None)
+    if isinstance(plugins, DictConfig):
+        plugins = [plugins[k] for k in plugins.keys()]
 
-    #instantiate dataset
-    #datamodule = instantiate(cfg.data)
-    #datamodule.setup(stage="")
+    trainer = Trainer(callbacks=callbacks, logger=logger, plugins=plugins, **trainer_kwargs)
 
-    #set up strategy if necessary
-
-
-    trainer = Trainer(callbacks=callbacks, logger=logger, **cfg.trainer)
-
-    #trainer.fit(model, datamodule, ckpt_path=None)
+    #start training
+    trainer.fit(model, datamodule, ckpt_path=cfg.get("ckpt_path", None))
 
 ##########################
 if __name__ == "__main__":

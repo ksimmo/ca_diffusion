@@ -1,9 +1,8 @@
 defaults:
   - _self_
-  - callbacks: default
-  - logger: default
   - trainer: default
   - paths: default
   - hydra: default
 
 seed: 42
+ckpt_path: null

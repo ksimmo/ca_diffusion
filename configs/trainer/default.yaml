@@ -1,4 +1,11 @@
+defaults:
+  - _self_
+  - callbacks: default
+  - logger: default
+
 accelerator: "auto"
 strategy: "auto"
+devices: "auto"
 num_nodes: 1
 precision: "32-true"
+accumulate_grad_batches: 1

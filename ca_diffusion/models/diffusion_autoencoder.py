@@ -1,4 +1,4 @@
-import lightning as pl
+import lightning.pytorch as pl
 
 class DiffusionAutoencoder(pl.LightningModule):
     def __init__():
