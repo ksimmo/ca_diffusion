@@ -114,7 +114,7 @@ class DataModule(pl.LightningDataModule):
 
         self.dataset_configs = {"train": train, "validation": validation, "test": test}
 
-    def setup(self, stage=""): #create necessary datasets at the beginning
+    def setup(self): #create necessary datasets at the beginning
         self.datasets = {}
         for k in self.dataset_configs.keys():
             if self.dataset_configs[k] is not None:
