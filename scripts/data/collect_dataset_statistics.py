@@ -12,11 +12,13 @@ import h5py
 import json
 import matplotlib.pyplot as plt
 
+from scipy.ndimage import binary_dilation
+
 from ca_diffusion.tools.live_histogram import LiveHistogram1D
 
 def analyze_video(path, name, out_dir, chunk_size=100):
     try:
-        h = h5py.File(os.path.join(path, "data", name), "r")
+        h = h5py.File(os.path.join(path, name, "data", name+".h5"), "r")
     except Exception as e:
         return
     
@@ -24,38 +26,39 @@ def analyze_video(path, name, out_dir, chunk_size=100):
         h.close()
         return
     
-    os.makedirs(os.path.join(out_dir, name[:-3]), exist_ok=True)
+    os.makedirs(os.path.join(out_dir, name), exist_ok=True)
     
     shape = h["images"].shape
     max_intensity = np.amax(h["images"])
 
     #load segmentation map
-    f = open(os.path.join(path, "annotations", "original", name[:-3]+".json"), "r")
+    f = open(os.path.join(path, name, "data", "regions.json"), "r")
     annotations = json.load(f)
 
     segmap = np.zeros(shape[1:])
     for a in annotations:
         coords = np.array(a["coordinates"])
-        segmap[coords[:,1], coords[:,0]] = 1
+        segmap[coords[:,0], coords[:,1]] = 1
+
+    #extend segmap by 2 pixels as safety margin
+    safety_segmap = binary_dilation(segmap, np.ones((2,2)), iterations=2)
 
     p_seg = np.sum(segmap)/(shape[1]*shape[2])
 
-    plt.imsave(os.path.join(out_dir, name[:-3], "segmap.png"), segmap)
-    plt.imsave(os.path.join(out_dir, name[:-3], "mean.png"), np.mean(h["images"], axis=0))
+    plt.imsave(os.path.join(out_dir, name, "segmap.png"), segmap)
+    plt.imsave(os.path.join(out_dir, name, "mean.png"), np.mean(h["images"], axis=0))
     
     intensity_hist = LiveHistogram1D([0, int(max_intensity)], int(max_intensity), name="intensity")
     intensity_hist2 = LiveHistogram1D([0, int(max_intensity)], int(max_intensity), name="intensity")
     intensity_hist3 = LiveHistogram1D([0, int(max_intensity)], int(max_intensity), name="intensity")
     for i in tqdm(range(100)):
         start = i*chunk_size
-        if start>=shape[0]:
-            break
         end = min((i+1)*chunk_size, shape[0])
 
         crop = h["images"][start:end].astype(np.float32)
         intensity_hist.update(crop.flatten())
 
-        crop2 = crop*np.expand_dims(1.0-segmap, axis=0)
+        crop2 = crop*np.expand_dims(1.0-safety_segmap, axis=0)
         crop2 = crop2.flatten()
         crop2 = crop2[np.where(crop2>0)[0]]
         intensity_hist2.update(crop2.flatten())
@@ -64,6 +67,10 @@ def analyze_video(path, name, out_dir, chunk_size=100):
         crop3 = crop3.flatten()
         crop3 = crop3[np.where(crop3>0)[0]]
         intensity_hist3.update(crop3.flatten())
+
+        #check if this were the last few frames
+        if end<(i+1)*chunk_size:
+            break
 
     #find highest probability peak
     bins, val = intensity_hist.data(False)
@@ -82,17 +89,17 @@ def analyze_video(path, name, out_dir, chunk_size=100):
     plt.step(bins2, val2, alpha=0.5)
     plt.step(bins3, val3, alpha=0.5)
     plt.axvline(bins[ind], color="red")
-    plt.savefig(os.path.join(out_dir, name[:-3], "intensity_hist.png"))
+    plt.savefig(os.path.join(out_dir, name, "intensity_hist.png"))
     plt.close()
 
-    np.savez(os.path.join(out_dir, name[:-3], "intensity_hist.npz"), bins-0.5, val)
+    np.savez(os.path.join(out_dir, name, "intensity_hist.npz"), bins-0.5, val)
 
 
     h.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-r", "--root_dir", type=str, default="data", help="Path to calcium data")
+    parser.add_argument("-r", "--root_dir", type=str, default="data/neurofinder", help="Path to calcium data")
     parser.add_argument("-o", "--output_dir", type=str, default="./statistics", help="Output directory")
     opt = parser.parse_args()
 
@@ -100,10 +107,9 @@ if __name__ == "__main__":
 
     video_paths = []
     #load video information
-    for f in os.listdir(os.path.join(opt.root_dir, "data")):
-        if f[0]=="0" or f=="test": #we do not want to load neurofinder videos for now
+    for f in sorted(os.listdir(opt.root_dir)):
+        if "test" in f:
             continue
-
         analyze_video(opt.root_dir, f, opt.output_dir)
 
 

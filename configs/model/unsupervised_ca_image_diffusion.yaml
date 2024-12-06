@@ -15,3 +15,12 @@ model:
   channels_freq: 256
   compile: True
   use_checkpoint: False
+
+diffusor:
+  _target_:
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: True
+  lr: {$learning_rate}
+  weight_decay: 0.0
