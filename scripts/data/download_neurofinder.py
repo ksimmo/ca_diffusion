@@ -68,6 +68,7 @@ if __name__=="__main__":
                 
             dset.attrs["mean_intensity"] = np.mean(dset[()])
             dset.attrs["std_intensity"] = np.std(dset[()])
+            dset.attrs["max_intensity"] = np.amax(dset[()])
             fil.close()
             
             if not "test" in n:

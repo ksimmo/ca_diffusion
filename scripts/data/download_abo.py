@@ -91,6 +91,7 @@ if __name__ == "__main__":
             regions.append(region)
 
         #save masks
+        #TODO: abo has x and y swapped, change!!!
         temp = open(os.path.join(save_path, name, "data", "regions.json"), "w+")
         json.dump(regions, temp)
         temp.close()
