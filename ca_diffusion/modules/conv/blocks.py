@@ -102,7 +102,7 @@ class ResnetBlock2D(nn.Module):
     
 
 class Attention2D(nn.Module):
-    def __init__(self, channels, num_heads, head_channels=None, qkv_bias=True, qk_norm=True, dropout=0.0, compile=True, use_checkpoint=False):
+    def __init__(self, channels, num_heads, head_channels=None, qkv_bias=True, qk_norm=True, dropout=0.0, compile=False, use_checkpoint=False):
         super().__init__()
 
         self.use_checkpoint = use_checkpoint

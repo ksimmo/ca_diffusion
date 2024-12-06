@@ -1,3 +1,5 @@
+job:
+  chdir: False
 #single run mode
 run: 
   dir: ${paths.log_dir}/runs/{$tag}/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,11 +1,14 @@
 defaults:
   - _self_
+  - data: neurofinder_image
+  - model: unsupervised_ca_image_diffusion
   - trainer: default
   - paths: default
   - hydra: default
+  - experiment: null
 
 seed: 42
-learning_rate: 1e-4
+batch_size: 4
 
 tag: default
 ckpt_path: null

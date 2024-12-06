@@ -23,6 +23,16 @@ def worker_init_fn(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     np.random.seed(worker_seed)
     random.seed(worker_seed)
+
+class EmptyDataset(torch.utils.data.Dataset):
+    def __init__(self):
+        pass
+
+    def __len__(self):
+        return 0
+
+    def __getitem__(self, index):
+        raise IndexError("Empty dataset cannot be indexed")
     
 
 ####################################################
@@ -113,8 +123,9 @@ class DataModule(pl.LightningDataModule):
         super().__init__()
 
         self.dataset_configs = {"train": train, "validation": validation, "test": test}
+        self.empty_dataset = EmptyDataset() #return if dataset is not specified
 
-    def setup(self): #create necessary datasets at the beginning
+    def setup(self, stage=""): #create necessary datasets at the beginning
         self.datasets = {}
         for k in self.dataset_configs.keys():
             if self.dataset_configs[k] is not None:
@@ -127,12 +138,17 @@ class DataModule(pl.LightningDataModule):
         return set(keys).issubset(sample.keys())
 
     def get_loader(self, config, mode="train"):
+        if config==None:
+            print("No config given returning empty dataset")
+            return torch.utils.data.DataLoader(self.empty_dataset, batch_size=1)
         variant = config.get("variant", None)
         if variant=="torch":
             worker_init = config.get("worker_init", True)
             shuffle = config.get("shuffle", False)
             drop_last = config.get("drop_last", False)
-            return torch.utils.data.DataLoader(self.datasets[mode], batch_size=config["batch_size"], num_workers=config["num_workers"], shuffle=shuffle, worker_init_fn=worker_init_fn if worker_init else None, drop_last=drop_last)
+            pin_memory = config.get("pin_memory", False)
+            return torch.utils.data.DataLoader(self.datasets[mode], batch_size=config["batch_size"], num_workers=config["num_workers"], shuffle=shuffle, 
+                                               worker_init_fn=worker_init_fn if worker_init else None, drop_last=drop_last, pin_memory=pin_memory)
         elif variant=="wds": #webdataset
             #initialize shards
             if isinstance(config["tar_base"], str) and isinstance(config["tars"], str):

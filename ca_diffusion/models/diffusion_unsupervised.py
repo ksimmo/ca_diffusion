@@ -11,16 +11,28 @@ class DiffusionModel(pl.LightningModule):
                  scheduler: torch.optim.lr_scheduler=None):
         super().__init__()
 
-        self.save_hyperparameters(logger=False) #do net hyperparams to logger
+        self.save_hyperparameters(ignore=["model", "diffusor"], logger=False) #do net hyperparams to logger
 
         self.model = model
         self.diffusor = diffusor
 
     def training_step(self, batch, batch_idx):
-        pass
+        log = {}
+        loss, loss_dict = self.diffusor(self.model, batch["data"])
+        for k, v in loss_dict.items():
+            log["train/"+k] = v
+        self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        log = {}
+        loss, loss_dict = self.diffusor(self.model, batch["data"])
+        for k, v in loss_dict.items():
+            log["val/"+k] = v
+        self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
 
-    def configure_optimizer(self):
-        params = list(self.model.parameters(), self.diffusor.parameters())
+    def configure_optimizers(self):
+        params = list(self.model.parameters()) + list(self.diffusor.parameters())
         optimizer = self.hparams.optimizer(params=params)
         if self.hparams.scheduler is not None:
             scheduler = self.hparams.scheduler(optimizer=optimizer)

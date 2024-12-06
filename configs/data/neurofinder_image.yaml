@@ -1,0 +1,15 @@
+train:
+  variant: "torch"
+  batch_size: {$batch_size}
+  num_workers: 8
+  use_worker_init_fn: True
+  pin_memory: True
+  shuffle: True
+  drop_last: True
+  config:
+    _target_: ca_diffusion.data.calcium.CalciumDataset
+    root_dir: "data/neurofinder"
+    crop_size: [64,64]
+    num_crops_per_video: 100
+    use_video_segments: True
+    load_annotations: False

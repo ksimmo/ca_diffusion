@@ -1,2 +1,10 @@
+# @package _global_
 defaults:
-  - _self_
+  - override /data: neurofinder_image
+
+tag: test
+
+data:
+  train:
+    batch_size: 2
+    num_workers: 2

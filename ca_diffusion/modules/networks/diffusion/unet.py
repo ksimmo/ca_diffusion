@@ -68,7 +68,7 @@ class TimestepEmbedder(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self, channels_in, channels, channels_emb, channels_out=None, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True,
-                 channels_freq=256, compile=True, use_checkpoint=False):
+                 channels_freq=256, compile=False, use_checkpoint=False):
         super().__init__()
 
         channels_out = channels_in if channels_out is None else channels_out

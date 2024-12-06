@@ -1,10 +1,12 @@
 import abc
+
+import numpy as np
 import torch
 import torch.nn as nn
 
 from ca_diffusion.modules.utils import shape_val
 
-class Diffusor(nn.Module,abc.ABC):
+class Diffusor(nn.Module):
     def __init__(self):
         super().__init__()
 
@@ -14,11 +16,15 @@ class Diffusor(nn.Module,abc.ABC):
 
 
 class FlowMatching(Diffusor):
-    def __init__(self, sigma_min=0.0, noise_prior="independent"):
+    def __init__(self, sigma_min=0.0, timestep_sampling="linear", noise_prior="independent", learn_logvar=False):
         super().__init__()
 
+        self.timestep_sampling = timestep_sampling
         self.sigma_min = sigma_min
         self.noise_prior = noise_prior
+        self.learn_logvar = learn_logvar
+
+        self.criterion = nn.MSELoss(reduction="none")
 
     def sample_noise(self, shape):
         if self.noise_prior=="independent":
@@ -42,6 +48,41 @@ class FlowMatching(Diffusor):
         eps = self.sample_noise(x.size()).to(x.device) if eps is None else eps
         t = shape_val(t, x, -1)
 
-        xt = (1.0-t)*x + (self.sigma_min+(1.0-self.sigma_min)*t)*eps
+        xt = (1.0-(1.0-self.sigma_min)*t)*x + t*eps
 
         return xt, eps
+    
+    def forward(self, model, x, t=None, loss_mask=None, **model_args):
+        if t is None:
+            if self.timestep_sampling=="linear":
+                t = torch.rand((x.size(0),), device=x.device) #uniform sampling of t
+            elif self.timestep_sampling=="logit_sigmoid":
+                t = torch.sigmoid(torch.randn((x.size(0),), device=x.device))
+            elif self.timestep_sampling=="mode":
+                u = torch.randn((x.size(0),), device=x.device)
+                s = 0.81
+                t = 1.0-u-s*(torch.cos(np.pi*0.5*u).pow(2)-1+u)
+            else:
+                raise NotImplementedError("Timestep sampling method {} is not implemented!".format(self.timestep_sampling))
+        xt, eps = self.encode(x, t)
+
+        target = eps-(1.0-self.sigma_min)*x
+
+        pred = model(x, t, **model_args)
+
+        if loss_mask is None:
+            val = torch.mean(self.criterion(pred, target), dim=np.arange(1,len(target.size())).tolist())
+        else:
+            val = torch.sum(self.criterion(pred, target)*loss_mask, dim=np.arange(1,len(target.size())).tolist())/(torch.sum(loss_mask, dim=np.arange(1,len(target.size())).tolist())+1e-12)
+
+        if self.learn_logvar:
+            logvar_t = self.logvar_net(t).squeeze(-1)
+        else:
+            logvar_t = torch.zeros_like(val)
+
+        loss = torch.mean(val/torch.exp(logvar_t)+logvar_t)
+
+        loss_dict = {}
+        loss_dict["fm_loss"] = loss.item()
+
+        return loss, loss_dict
