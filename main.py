@@ -7,7 +7,7 @@ from lightning.pytorch import Trainer, seed_everything
 import hydra
 from hydra.utils import instantiate
 
-from ca_diffusion.data import DataModule
+from ca_diffusion.datamodule import DataModule
 
 @hydra.main(config_path="configs", config_name="train")
 def main(cfg: DictConfig):
@@ -16,11 +16,12 @@ def main(cfg: DictConfig):
     seed_everything(cfg.get("seed", 42), workers=True) #set random seed for reproducibility
 
     #instantiate model we want to train
-    #model = instantiate(OmegaConf.to_container(cfg.model))
+    model = instantiate(OmegaConf.to_container(cfg.model))
 
     #instantiate dataset we use for training and maybe validation
     datamodule = DataModule(**cfg.data)
     datamodule.setup()
+
 
     #set up trainer
     trainer_kwargs = instantiate(cfg.trainer)
@@ -39,7 +40,7 @@ def main(cfg: DictConfig):
     trainer = Trainer(callbacks=callbacks, logger=logger, plugins=plugins, **trainer_kwargs)
 
     #start training
-    #trainer.fit(model, datamodule, ckpt_path=cfg.get("ckpt_path", None))
+    trainer.fit(model, datamodule, ckpt_path=cfg.get("ckpt_path", None))
 
 ##########################
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 # @package _global_
 defaults:
   - override /data: neurofinder_image
+  - override /model: unsupervised_ca_image_diffusion
 
 tag: test
 
 data:
   train:
-    batch_size: 2
-    num_workers: 2
+    batch_size: 4
+    num_workers: 4
