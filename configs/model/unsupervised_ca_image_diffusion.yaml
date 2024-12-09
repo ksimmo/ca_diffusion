@@ -1,7 +1,7 @@
 _target_: ca_diffusion.models.diffusion_unsupervised.DiffusionModel
 
 model:
-  _target_: ca_diffusion.modules.networks.diffusion.unet.UNet
+  _target_: ca_diffusion.modules.networks.diffusion.unet2d.UNet
   channels_in: 3
   channels: 64
   channels_emb: 512

@@ -2,6 +2,7 @@
 defaults:
   - override /data: neurofinder_image
   - override /model: ca_image_diffusion_ae
+  - override /trainer: default
 
 tag: ca_image_diffusion_ae
 
@@ -14,6 +15,12 @@ model:
   encoder:
     channels_in: 1
     channels_z: 4
+    channel_mult: [2,4,4]
   decoder: 
     channels_in: 1
     channels_injection: 4
+    channel_mult: [2,4,4,8]
+
+trainer:
+  gradient_clip_val: 1.0
+  precision: "bf16-mixed"

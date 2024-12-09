@@ -1,7 +1,7 @@
 _target_: ca_diffusion.models.diffusion_autoencoder.DiffusionAutoencoder
 
 encoder:
-  _target_: ca_diffusion.modules.networks.diffusion.unet.Encoder
+  _target_: ca_diffusion.modules.networks.diffusion.unet2d.Encoder
   channels_in: 3
   channels: 64
   channels_z: 4
@@ -15,7 +15,7 @@ encoder:
   use_checkpoint: False
 
 decoder:
-  _target_: ca_diffusion.modules.networks.diffusion.unet.UNet
+  _target_: ca_diffusion.modules.networks.diffusion.unet2d.UNet
   channels_in: 3
   channels: 64
   channels_emb: 512
