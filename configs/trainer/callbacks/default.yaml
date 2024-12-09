@@ -1,3 +1,4 @@
 defaults:
   - cuda
   - model_checkpoint
+  - image_logger

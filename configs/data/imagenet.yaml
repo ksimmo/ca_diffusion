@@ -1,0 +1,14 @@
+train:
+  variant: "torch"
+  batch_size: ${batch_size}
+  num_workers: 8
+  use_worker_init_fn: True
+  pin_memory: True
+  shuffle: True
+  drop_last: True
+  config:
+    _target_: ca_diffusion.data.image_interface.ImageDataset
+    data_path: data/ILSVRC
+    typ: "imagenet"
+    split: "train"
+    image_size: [64,64]

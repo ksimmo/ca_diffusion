@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - override /data: neurofinder_image
+  - override /model: ca_image_diffusion_ae
+
+tag: ca_image_diffusion_ae
+
+data:
+  train:
+    batch_size: 128
+    num_workers: 16
+
+model:
+  encoder:
+    channels_in: 1
+    channels_z: 4
+  decoder: 
+    channels_in: 1
+    channels_injection: 4

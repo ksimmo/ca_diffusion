@@ -7,24 +7,10 @@ import torch.nn as nn
 from ca_diffusion.modules.utils import shape_val
 
 class Diffusor(nn.Module):
-    def __init__(self):
+    def __init__(self, noise_prior="independent"):
         super().__init__()
 
-    @abc.abstractmethod
-    def encode(self, x, t, eps=None):
-        return x
-
-
-class FlowMatching(Diffusor):
-    def __init__(self, sigma_min=0.0, timestep_sampling="linear", noise_prior="independent", learn_logvar=False):
-        super().__init__()
-
-        self.timestep_sampling = timestep_sampling
-        self.sigma_min = sigma_min
         self.noise_prior = noise_prior
-        self.learn_logvar = learn_logvar
-
-        self.criterion = nn.MSELoss(reduction="none")
 
     def sample_noise(self, shape):
         if self.noise_prior=="independent":
@@ -44,6 +30,21 @@ class FlowMatching(Diffusor):
 
         return eps
 
+    @abc.abstractmethod
+    def encode(self, x, t, eps=None):
+        return x
+
+
+class FlowMatching(Diffusor):
+    def __init__(self, sigma_min=0.0, timestep_sampling="linear", noise_prior="independent", learn_logvar=False):
+        super().__init__(noise_prior=noise_prior)
+
+        self.timestep_sampling = timestep_sampling
+        self.sigma_min = sigma_min
+        self.learn_logvar = learn_logvar
+
+        self.criterion = nn.MSELoss(reduction="none")
+
     def encode(self, x, t, eps=None):
         eps = self.sample_noise(x.size()).to(x.device) if eps is None else eps
         t = shape_val(t, x, -1)
@@ -52,7 +53,7 @@ class FlowMatching(Diffusor):
 
         return xt, eps
     
-    def forward(self, model, x, t=None, loss_mask=None, **model_args):
+    def forward(self, model, x, t=None, loss_mask=None, model_args={}):
         if t is None:
             if self.timestep_sampling=="linear":
                 t = torch.rand((x.size(0),), device=x.device) #uniform sampling of t
@@ -68,7 +69,7 @@ class FlowMatching(Diffusor):
 
         target = eps-(1.0-self.sigma_min)*x
 
-        pred = model(x, t, **model_args)
+        pred = model(xt, t, **model_args)
 
         if loss_mask is None:
             val = torch.mean(self.criterion(pred, target), dim=np.arange(1,len(target.size())).tolist())
@@ -87,7 +88,7 @@ class FlowMatching(Diffusor):
 
         return loss, loss_dict
 
-    def sample_euler(self, model, noise, num_steps=50, **model_args):
+    def sample_euler(self, model, noise, num_steps=50, model_args={}):
         ts = torch.linspace(1.0, self.sigma_min, num_steps).to(noise.device)
 
         for step in range(1,num_steps):

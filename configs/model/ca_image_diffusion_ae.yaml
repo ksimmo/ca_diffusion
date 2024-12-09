@@ -1,6 +1,20 @@
-_target_: ca_diffusion.models.diffusion_unsupervised.DiffusionModel
+_target_: ca_diffusion.models.diffusion_autoencoder.DiffusionAutoencoder
 
-model:
+encoder:
+  _target_: ca_diffusion.modules.networks.diffusion.unet.Encoder
+  channels_in: 3
+  channels: 64
+  channels_z: 4
+  channel_mult: [2,4,4]
+  num_blocks: 2
+  attn_res: [4,-1]
+  num_heads: 8
+  qkv_bias: True
+  qk_norm: True
+  compile: True
+  use_checkpoint: False
+
+decoder:
   _target_: ca_diffusion.modules.networks.diffusion.unet.UNet
   channels_in: 3
   channels: 64
@@ -14,6 +28,8 @@ model:
   channels_freq: 256
   compile: True
   use_checkpoint: False
+  channels_injection: 4
+  injection_res: 4
 
 diffusor:
   _target_: ca_diffusion.modules.diffusion.FlowMatching
