@@ -83,6 +83,7 @@ class DiffusionAutoencoder(pl.LightningModule):
             gt = torch.cat([torch.mean(gt, dim=2).unsqueeze(2), gt], dim=2).cpu()
             sample = torch.cat([torch.mean(sample, dim=2).unsqueeze(2), sample], dim=2).cpu()
 
-            log["samples"] = torch.cat([gt, sample], dim=-2)
+            T = min(16, len(gt))
+            log["samples"] = torch.cat([gt[:,:,:T], sample[:,:,:T]], dim=-2)
         return log
 

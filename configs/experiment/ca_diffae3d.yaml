@@ -4,12 +4,12 @@ defaults:
   - override /model: ca_image_diffusion_ae
   - override /trainer: default
 
-tag: ca_image_diffusion_ae
+tag: ca_video_diffusion_ae
 
 data:
   train:
-    batch_size: 4
-    num_workers: 4
+    batch_size: 10
+    num_workers: 10
     config:
       crop_size: [64,64,64]
 
@@ -30,3 +30,4 @@ model:
 trainer:
   gradient_clip_val: 1.0
   precision: "bf16-mixed"
+  accumulate_grad_batches: 4

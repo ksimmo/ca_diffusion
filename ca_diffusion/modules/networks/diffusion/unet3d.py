@@ -93,7 +93,7 @@ class UNet(nn.Module):
             channels_b = self.channel_mult[i+1]*channels
 
             if self.use_injection and i+1==injection_res:
-                self.injection_proj = nn.Conv2d(channels_injection, channels_a, kernel_size=3, stride=1, padding=1, bias=True)
+                self.injection_proj = nn.Conv3d(channels_injection, channels_a, kernel_size=3, stride=1, padding=1, bias=True)
 
             for j in range(num_blocks):
                 if self.use_injection and i+1==injection_res and j==0:
@@ -118,7 +118,7 @@ class UNet(nn.Module):
 
         self.bottleneck = nn.ModuleList()
         if self.use_injection and injection_res==-1:
-            self.injection_proj = nn.Conv2d(channels_injection, channels_b, kernel_size=3, stride=1, padding=1, bias=True)
+            self.injection_proj = nn.Conv3d(channels_injection, channels_b, kernel_size=3, stride=1, padding=1, bias=True)
             self.bottleneck.append(ResnetBlock3D(channels_b*2, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
         else:
             self.bottleneck.append(ResnetBlock3D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))

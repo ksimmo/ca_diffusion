@@ -11,28 +11,25 @@ from ca_diffusion.modules.transformer.blocks import AttentionBlock
 
 #currently down and upsampling only support box filter
 class Downsample3D(nn.Module):
-    def __init__(self, f=[1,1,1]):
+    def __init__(self, f=[1,1]):
         super().__init__()
 
         self.pad = (len(f) - 1) // 2
 
-        f = np.array(f)
-        f = f/f.sum()
-        weights = torch.FloatTensor(np.outer(f,f))
+        weights = torch.ones((2,2,2))
+        weights = weights/weights.sum()
         self.register_buffer("weights", weights.unsqueeze(0).unsqueeze(0))
 
     def forward(self, x):
         return F.conv3d(x, self.weights.repeat(x.size(1),1,1,1,1), groups=x.size(1), stride=2, padding=(self.pad,))
 
 class Upsample3D(nn.Module):
-    def __init__(self, f=[1,1,1]):
+    def __init__(self, f=[1,1]):
         super().__init__()
 
         self.pad = (len(f) - 1) // 2
 
-        f = np.array(f)
-        f = f/f.sum()
-        weights = torch.FloatTensor(np.outer(f,f)*8.0)
+        weights = torch.ones((2,2,2))
         self.register_buffer("weights", weights.unsqueeze(0))
 
     def forward(self, x):
