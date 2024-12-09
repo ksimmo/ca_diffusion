@@ -141,7 +141,7 @@ class CalciumDataset(torch.utils.data.Dataset):
         video = video/max_intensity
         video = (video-0.5)/0.5
 
-        element = {"data": video}
+        element = {"image": video}
         if len(data)==2:
             element["segmap"] = data[1]
         return element

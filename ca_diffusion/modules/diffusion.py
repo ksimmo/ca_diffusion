@@ -29,10 +29,10 @@ class FlowMatching(Diffusor):
     def sample_noise(self, shape):
         if self.noise_prior=="independent":
             eps = torch.randn(shape)
-        elif self.noise_prior=="mixed":
+        elif self.noise_prior=="mixed": #use for spatio-temporal data only!!!
             eps = torch.randn(shape)
             eps = (eps+torch.randn_like(eps[:,:,:1]))*0.5
-        elif self.noise_prior=="heavy_tailed":
+        elif self.noise_prior=="heavy_tailed": #https://arxiv.org/abs/2410.14171
             eps = torch.randn(shape)
             dist = torch.distributions.chi2.Chi2(self.chi_dof)
             k = dist.sample((eps.size(0),))
@@ -86,3 +86,33 @@ class FlowMatching(Diffusor):
         loss_dict["fm_loss"] = loss.item()
 
         return loss, loss_dict
+
+    def sample_euler(self, model, noise, num_steps=50, **model_args):
+        ts = torch.linspace(1.0, self.sigma_min, num_steps).to(noise.device)
+
+        for step in range(1,num_steps):
+            t_now = torch.full((noise.size(0),), ts[step], device=noise.device)
+            t_prev = torch.full((noise.size(0),), ts[step-1], device=noise.device)
+
+            dt = t_now-t_prev
+            dt = shape_val(dt, noise)
+
+            pred = model(noise, t_prev, **model_args)
+
+            #update
+            noise = noise + pred*dt
+
+        return noise
+    
+    @torch.no_grad()
+    def sample(self, model, noise, strategy="euler", **kwargs):
+        if strategy=="euler":
+            return self.sample_euler(model, noise, **kwargs)
+        #elif strategy=="heun":
+        #    return self.sample_heun(model, noise, **kwargs)
+        #elif strategy=="midpoint":
+        #    return self.sample_midpoint(model, noise, **kwargs)
+        #elif strategy=="rk4":
+        #    return self.sample_rk4(model, noise, **kwargs)
+        else:
+            raise NotImplementedError("Sampling strategy {} is not supported!".format(strategy))

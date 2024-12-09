@@ -18,15 +18,25 @@ class DiffusionModel(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         log = {}
-        loss, loss_dict = self.diffusor(self.model, batch["data"])
+        loss, loss_dict = self.diffusor(self.model, batch["image"])
         for k, v in loss_dict.items():
             log["train/"+k] = v
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         return loss
     
+    #uncomment to search for unused parameters or inspect gradients
+    """
+    def on_after_backward(self):
+        for name, param in self.model.named_parameters():
+            if param.grad is None:
+                print(name)
+            #else:
+            #    print(name, torch.mean(param.grad))
+    """
+    
     def validation_step(self, batch, batch_idx):
         log = {}
-        loss, loss_dict = self.diffusor(self.model, batch["data"])
+        loss, loss_dict = self.diffusor(self.model, batch["image"])
         for k, v in loss_dict.items():
             log["val/"+k] = v
         self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
@@ -41,3 +51,13 @@ class DiffusionModel(pl.LightningModule):
                                                              "interval": "step",
                                                              "frequency": 1}}
         return {"optimizer": optimizer}
+    
+    def log_images(self, batch, **kwargs):
+        gt = batch["image"]
+        sample = self.diffusor.sample(self.model, self.diffusor.sample_noise(gt.size()).to(self.device), "euler")
+        sample2 = self.diffusor.sample(self.model, self.diffusor.sample_noise(gt.size()).to(self.device), "euler")
+
+        log = {}
+        log["samples"] = torch.cat([gt.unsqueeze(2), sample.unsqueeze(2), sample2.unsqueeze(2)], dim=2)
+        return log
+
