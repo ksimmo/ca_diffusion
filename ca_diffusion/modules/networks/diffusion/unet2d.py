@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ca_diffusion.modules.utils import zero_init, shape_val
-from ca_diffusion.modules.conv.blocks import ResnetBlock2D, Attention2D
+from ca_diffusion.modules.conv.blocks2d import ResnetBlock2D, Attention2D
 
 
 class Encoder(nn.Module):
@@ -86,6 +86,7 @@ class UNet(nn.Module):
 
         self.use_injection = channels_injection is not None
         self.injection_proj = None
+        self.injection_res = injection_res
 
         for i in range(len(self.channel_mult)-1):
             channels_a = self.channel_mult[i]*channels
@@ -116,7 +117,11 @@ class UNet(nn.Module):
 
 
         self.bottleneck = nn.ModuleList()
-        self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
+        if self.use_injection and injection_res==-1:
+            self.injection_proj = nn.Conv2d(channels_injection, channels_b, kernel_size=3, stride=1, padding=1, bias=True)
+            self.bottleneck.append(ResnetBlock2D(channels_b*2, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
+        else:
+            self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
         if -1 in attn_res:
             self.bottleneck.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
         self.bottleneck.append(ResnetBlock2D(channels_b, channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint))
@@ -162,6 +167,10 @@ class UNet(nn.Module):
                 skips.append(x)
             else:
                 x = block(x)
+
+        if self.use_injection and not injected and self.injection_res==-1:
+            x = torch.cat([x,self.injection_proj(inj)], dim=1)
+            injected = True
 
         for block in self.bottleneck:
             if not isinstance(block, Attention2D):

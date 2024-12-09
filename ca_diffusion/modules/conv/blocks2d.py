@@ -4,11 +4,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from einops import rearrange
+
 from ca_diffusion.modules.utils import zero_init, checkpoint, shape_val
 from ca_diffusion.modules.transformer.blocks import AttentionBlock
 
 #currently down and upsampling only support box filter
-class Downsample(nn.Module):
+class Downsample2D(nn.Module):
     def __init__(self, f=[1,1]):
         super().__init__()
 
@@ -22,7 +24,7 @@ class Downsample(nn.Module):
     def forward(self, x):
         return F.conv2d(x, self.weights.repeat(x.size(1),1,1,1), groups=x.size(1), stride=2, padding=(self.pad,))
 
-class Upsample(nn.Module):
+class Upsample2D(nn.Module):
     def __init__(self, f=[1,1]):
         super().__init__()
 
@@ -50,9 +52,9 @@ class ResnetBlock2D(nn.Module):
         
         blocks_in = [nn.GroupNorm(num_groups, channels_in), nn.SiLU()]
         if mode=="up":
-            blocks_in += [Upsample()]
+            blocks_in += [Upsample2D()]
         elif mode=="down":
-            blocks_in += [Downsample()]
+            blocks_in += [Downsample2D()]
         blocks_in += [nn.Conv2d(channels_in, channels_out, kernel_size=3, stride=1, padding=1, bias=True)]
         if self.scale_shift_norm:
             blocks_in += [nn.GroupNorm(num_groups, channels_out)]
@@ -71,9 +73,9 @@ class ResnetBlock2D(nn.Module):
 
         skip = []
         if mode=="up":
-            skip += [Upsample()]
+            skip += [Upsample2D()]
         elif mode=="down":
-            skip += [Downsample()]
+            skip += [Downsample2D()]
         if mode!="default" or channels_in!=channels_out:
             skip += [nn.Conv2d(channels_in, channels_out, kernel_size=1, stride=1, padding=0, bias=True)]
         
@@ -110,7 +112,8 @@ class Attention2D(nn.Module):
         self.attention = AttentionBlock(channels, num_heads, head_channels=head_channels, qkv_bias=qkv_bias, qk_norm=qk_norm, dropout=dropout, compile=compile)
 
     def forward(self, x):
-        x = x.movedim(1, -1)
+        xsize = x.size()
+        x = rearrange(x, "b c h w -> b (h w) c")
         x = checkpoint(self.attention, self.use_checkpoint, x)
-        x = x.movedim(-1, 1)
+        x = rearrange(x, "b (h w) c -> b c h w", h=xsize[-2], w=xsize[-1])
         return x

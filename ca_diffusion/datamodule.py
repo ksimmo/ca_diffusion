@@ -36,7 +36,7 @@ class EmptyDataset(torch.utils.data.Dataset):
     
 
 ####################################################
-def dict_collation_fn(samples, combine_tensors=True, combine_scalars=True, **kwargs):
+def dict_collation_fn(samples, combine_tensors: bool=True, combine_scalars: bool=True, **kwargs):
     """Take a list  of samples (as dictionary) and create a batch, preserving the keys.
     If `tensors` is True, `ndarray` objects are combined into
     tensor batches.
@@ -84,7 +84,7 @@ def _unbatched(data):
 unbatched = wds.filters.pipelinefilter(_unbatched)
 
 #map key-value pairs back to dictionary
-def unbatch_collation_fn(samples): #TODO: maybe there is a more efficient way
+def unbatch_collation_fn(samples: list): #TODO: maybe there is a more efficient way
     """
     Collation function for unbatching which is working with dicts
     """

@@ -9,10 +9,13 @@ class DiffusionAutoencoder(pl.LightningModule):
                  decoder: nn.Module,
                  diffusor: nn.Module,
                  optimizer: torch.optim.Optimizer,
-                 scheduler: torch.optim.lr_scheduler=None):
+                 scheduler: torch.optim.lr_scheduler=None,
+                 image_mode: bool=True):
         super().__init__()
 
         self.save_hyperparameters(ignore=["encoder", "decoder", "diffusor"], logger=False) #do net hyperparams to logger
+
+        self.image_mode = image_mode
 
         self.encoder = encoder
         self.decoder = decoder
@@ -59,16 +62,27 @@ class DiffusionAutoencoder(pl.LightningModule):
                                                              "frequency": 1}}
         return {"optimizer": optimizer}
     
+    @torch.no_grad()
     def log_images(self, batch, **kwargs):
+        log = {}
         gt = batch["image"]
 
         z = self.encoder(batch["image"])
         model_args = {"inj": z}
 
-        sample = self.diffusor.sample(self.decoder, self.diffusor.sample_noise(gt.size()).to(self.device), "euler", model_args=model_args)
-        sample2 = self.diffusor.sample(self.decoder, self.diffusor.sample_noise(gt.size()).to(self.device), "euler", model_args=model_args)
+        if self.image_mode:
+            samples = [gt.cpu().unsqueeze(2)]
+            for i in range(10):
+                sample = self.diffusor.sample(self.decoder, self.diffusor.sample_noise(gt.size()).to(self.device), "euler", model_args=model_args)
+                samples.append(sample.cpu().unsqueeze(2))
 
-        log = {}
-        log["samples"] = torch.cat([gt.unsqueeze(2), sample.unsqueeze(2), sample2.unsqueeze(2)], dim=2)
+            samples.append(torch.mean(torch.cat(samples[1:], dim=2),dim=2).unsqueeze(2))
+            log["samples"] = torch.cat(samples, dim=2)
+        else:
+            sample = self.diffusor.sample(self.decoder, self.diffusor.sample_noise(gt.size()).to(self.device), "euler", model_args=model_args)
+            gt = torch.cat([torch.mean(gt, dim=2).unsqueeze(2), gt], dim=2).cpu()
+            sample = torch.cat([torch.mean(sample, dim=2).unsqueeze(2), sample], dim=2).cpu()
+
+            log["samples"] = torch.cat([gt, sample], dim=-2)
         return log
 

@@ -1,0 +1,32 @@
+# @package _global_
+defaults:
+  - override /data: neurofinder_image
+  - override /model: ca_image_diffusion_ae
+  - override /trainer: default
+
+tag: ca_image_diffusion_ae
+
+data:
+  train:
+    batch_size: 4
+    num_workers: 4
+    config:
+      crop_size: [64,64,64]
+
+model:
+  encoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
+    channels_in: 1
+    channels_z: 4
+    channel_mult: [2,4,4]
+  decoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
+    channels_in: 1
+    channels_injection: 4
+    channel_mult: [2,4,4,8]
+
+  image_mode: False
+
+trainer:
+  gradient_clip_val: 1.0
+  precision: "bf16-mixed"
