@@ -9,50 +9,171 @@ from einops import rearrange
 from ca_diffusion.modules.utils import zero_init, checkpoint, shape_val
 from ca_diffusion.modules.transformer.blocks import AttentionBlock
 
-#currently down and upsampling only support box filter
-class Downsample3D(nn.Module):
-    def __init__(self, f=[1,1]):
-        super().__init__()
+#wrap conv3d so we can do causal convolution if we need to
+class Conv3D(nn.Conv3d):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=0, dilation=1, causal=False, **kwargs):
+        self.causal = causal
+        if not isinstance(kernel_size, (list, tuple)):
+            kernel_size = [kernel_size, kernel_size, kernel_size]
+        if not isinstance(stride, (list, tuple)):
+            stride = [stride, stride, stride]
+        if not isinstance(padding, (list, tuple)):
+            padding = [padding, padding, padding]
+        if not isinstance(dilation, (list, tuple)):
+            dilation = [dilation, dilation, dilation]
+        pad = padding
+        if causal:
+            pad[0] = 0 #only disable temporal padding
+        super().__init__(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=pad, dilation=dilation, **kwargs)
 
-        self.pad = (len(f) - 1) // 2
+        self.pad_temporal = 0
+        if self.causal and kernel_size[0]>1: #only pad when necessary
+            self.pad_temporal = kernel_size[0]-1
 
-        weights = torch.ones((2,2,2))
-        weights = weights/weights.sum()
-        self.register_buffer("weights", weights.unsqueeze(0).unsqueeze(0))
 
     def forward(self, x):
-        return F.conv3d(x, self.weights.repeat(x.size(1),1,1,1,1), groups=x.size(1), stride=2, padding=(self.pad,))
+        if self.pad_temporal>0 and self.causal:
+            x = F.pad(x, (0,0,0,0,self.pad_temporal,0), mode="replicate")
+        return super.forward(x)
+
+
+class Downsample3D(nn.Module):
+    def __init__(self, channels=None, spatial=True, temporal=True, causal=False, learnable=False):
+        super().__init__()
+
+        self.learnable = learnable
+        self.spatial = spatial
+        self.temporal = temporal
+        self.causal = causal
+        if causal:
+            if learnable and spatial:
+                self.pool_sp = nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=0)
+            elif spatial:
+                self.pool_sp = nn.AvgPool2d(2,2)
+            else:
+                self.pool_sp = nn.Identity()
+
+            if self.temporal:
+                self.pool_t = nn.AvgPool3d((2,1,1),(2,1,1))
+            else:
+                self.pool_t = nn.Identity()
+        else:
+            if learnable:
+                if spatial and temporal:
+                    self.pad = (0,1,0,1,0,1)
+                    self.pool = nn.Conv3d(channels, channels, kernel_size=3, stride=2, padding=0)
+                elif spatial:
+                    self.pad = (0,1,0,1,0,0)
+                    self.pool = nn.Conv3d(channels, channels, kernel_size=(1,3,3), stride=(1,2,2), padding=0)
+                elif temporal:
+                    self.pad = (0,0,0,0,0,1)
+                    self.pool = nn.Conv3d(channels, channels, kernel_size=(3,1,1), stride=(2,1,1), padding=0)
+            else:
+                if spatial and temporal:
+                    self.pool = nn.AvgPool3d(2, 2)
+                elif spatial:
+                    self.pool = nn.AvgPool3d((1,2,2), (1,2,2))
+                elif temporal:
+                    self.pool = nn.AvgPool3d((2,1,1), (2,1,1))
+
+
+    def forward(self, x):
+        if self.causal:
+            T = x.size(2)
+            if self.temporal and T>1:
+                #split
+                x_first = x[:,:,0:1]
+                x_rest = x[:,:,1:]
+                x_rest = self.pool_t(x_rest)
+                x = torch.cat([x_first, x_rest], dim=2)
+
+            x = rearrange(x, "b c t h w -> (b t) c h w")
+            x = self.pool_sp(x)
+            x = rearrange(x, "(b t ) c h w -> b c t h w")
+        else:
+            if self.learnable:
+                x = F.pad(x, self.pad, mode="constant" value=0)
+                x = self.pool(x)
+            else:
+                x = self.pool(x)        
+        return x
 
 class Upsample3D(nn.Module):
-    def __init__(self, f=[1,1]):
+    def __init__(self, channels=None, spatial=True, temporal=True, causal=False, learnable=False):
         super().__init__()
 
-        self.pad = (len(f) - 1) // 2
+        self.learnable = learnable
+        self.spatial = spatial
+        self.temporal = temporal
+        self.causal = causal
 
-        weights = torch.ones((2,2,2))
-        self.register_buffer("weights", weights.unsqueeze(0))
+        if causal:
+            if learnable and spatial:
+                self.unpool_sp = nn.Sequential(nn.Upsample(scale_factor=2.0), nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1))
+            elif spatial:
+                self.unpool_sp = nn.Upsample(scale_factor=2.0, mode="nearest")
+            else:
+                self.unpool_sp = nn.Identity()
+
+            if self.temporal:
+                self.pool_t = nn.Upsample(scale_factor=(2.0,1.0,1.0), mode="nearest")
+            else:
+                self.pool_t = nn.Identity()
+        else:
+            unpool = []
+            if spatial and temporal:
+                unpool += [nn.Upsample(scale_factor=2.0)]
+                if learnable:
+                    unpool += [nn.Conv3d(channels, channels, kernel_size=3, stride=1, padding=1)]
+            elif spatial:
+                unpool += [nn.Upsample(scale_factor=(1.0, 2.0, 2.0))]
+                if learnable:
+                    unpool += [nn.Conv3d(channels, channels, kernel_size=(1,3,3), stride=1, padding=(0,1,1))]
+            elif temporal:
+                unpool += [nn.Upsample(scale_factor=(2.0, 1.0, 1.0))]
+                if learnable:
+                    unpool += [nn.Conv3d(channels, channels, kernel_size=(3,1,1), stride=1, padding=(1,0,0))]
+            self.unpool = nn.Sequential(*unpool)
 
     def forward(self, x):
-        return F.conv_transpose3d(x, self.weights.repeat(x.size(1),1,1,1,1), groups=x.size(1), stride=2, padding=(self.pad,))
+        if self.causal:
+            T = x.size(2)
+            if self.temporal and T>1:
+                #split
+                x_first = x[:,:,0:1]
+                x_rest = x[:,:,1:]
+                x_rest = self.unpool_t(x_rest)
+                x = torch.cat([x_first, x_rest], dim=2)
+            #do spatial upsampling if necessary
+            x = rearrange(x, "b c t h w -> (b t) c h w")
+            x = self.unpool_sp(x)
+            x = rearrange(x, "(b t ) c h w -> b c t h w")
+        else:
+            x = self.unpool(x)     
+        return x
+
     
 
 class ResnetBlock3D(nn.Module):
-    def __init__(self, channels_in, channels_out, mode="default", num_groups=32, dropout=0.0, channels_emb=None, scale_shift_norm=True, use_checkpoint=False, compile=False):
+    def __init__(self, channels_in, channels_out, mode="default", num_groups=32, dropout=0.0, channels_emb=None, scale_shift_norm=True, use_checkpoint=False, compile=False, 
+                 learnable_pool=False, causal=False):
         super().__init__()
 
         self.use_checkpoint = use_checkpoint
         self.scale_shift_norm = scale_shift_norm
         self.mode = mode
 
-        if mode not in ["default", "up", "down"]:
+        if mode not in ["default", "up", "down", "up_sp", "down_sp", "up_tp", "down_temp"]:
             raise NotImplementedError("ResnetBlock mode {} is not supported!".format(mode))
         
         blocks_in = [nn.GroupNorm(num_groups, channels_in), nn.SiLU()]
-        if mode=="up":
-            blocks_in += [Upsample3D()]
-        elif mode=="down":
-            blocks_in += [Downsample3D()]
-        blocks_in += [nn.Conv3d(channels_in, channels_out, kernel_size=3, stride=1, padding=1, bias=True)]
+        if "up" in mode:
+            blocks_in += [Upsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
+                                     causal=causal, learnable=learnable_pool)]
+        elif "down" in mode:
+            blocks_in += [Downsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
+                                       causal=causal, learnable=learnable_pool)]
+        blocks_in += [Conv3D(channels_in, channels_out, kernel_size=3, stride=1, padding=1, bias=True, causal=causal)]
         if self.scale_shift_norm:
             blocks_in += [nn.GroupNorm(num_groups, channels_out)]
         self.blocks_in = nn.Sequential(*blocks_in)
@@ -65,16 +186,18 @@ class ResnetBlock3D(nn.Module):
         if not self.scale_shift_norm:
             blocks_out += [nn.GroupNorm(num_groups, channels_out)]
         blocks_out += [nn.SiLU(), nn.Dropout(dropout),
-                      zero_init(nn.Conv3d(channels_out, channels_out, kernel_size=3, stride=1, padding=1, bias=True))]
+                      zero_init(Conv3D(channels_out, channels_out, kernel_size=3, stride=1, padding=1, bias=True, causal=causal))]
         self.blocks_out = nn.Sequential(*blocks_out)
 
         skip = []
-        if mode=="up":
-            skip += [Upsample3D()]
-        elif mode=="down":
-            skip += [Downsample3D()]
+        if "up" in mode:
+            blocks_in += [Upsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
+                                     causal=causal, learnable=False)]
+        elif "down" in mode:
+            blocks_in += [Downsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
+                                       causal=causal, learnable=False)]
         if mode!="default" or channels_in!=channels_out:
-            skip += [nn.Conv3d(channels_in, channels_out, kernel_size=1, stride=1, padding=0, bias=True)]
+            skip += [Conv3D(channels_in, channels_out, kernel_size=1, stride=1, padding=0, bias=True, causal=causal)]
         
         self.skip = nn.Sequential(*skip) if len(skip)>0 else nn.Identity()
 

@@ -9,38 +9,40 @@ from einops import rearrange
 from ca_diffusion.modules.utils import zero_init, checkpoint, shape_val
 from ca_diffusion.modules.transformer.blocks import AttentionBlock
 
-#currently down and upsampling only support box filter
+
 class Downsample2D(nn.Module):
-    def __init__(self, f=[1,1]):
+    def __init__(self, channels=None, learnable=False):
         super().__init__()
 
-        self.pad = (len(f) - 1) // 2
-
-        f = np.array(f)
-        f = f/f.sum()
-        weights = torch.FloatTensor(np.outer(f,f))
-        self.register_buffer("weights", weights.unsqueeze(0).unsqueeze(0))
+        self.learnable = learnable
+        if learnable:
+            self.pool = nn.Conv2d(channels, channels, kernel_size=3, stride=2, padding=0)
+        else:
+            self.pool = nn.AvgPool2d(2,2)
 
     def forward(self, x):
-        return F.conv2d(x, self.weights.repeat(x.size(1),1,1,1), groups=x.size(1), stride=2, padding=(self.pad,))
+        if self.learnable:
+            x = F.pad(x, (0,1,0,1), mode="constant", value=0) #pad asymetrically
+            return self.pool(x)
+        else:
+            return self.pool(x)
+
 
 class Upsample2D(nn.Module):
-    def __init__(self, f=[1,1]):
+    def __init__(self, channels=None, learnable=False):
         super().__init__()
-
-        self.pad = (len(f) - 1) // 2
-
-        f = np.array(f)
-        f = f/f.sum()
-        weights = torch.FloatTensor(np.outer(f,f)*4.0)
-        self.register_buffer("weights", weights.unsqueeze(0))
+        if learnable:
+            self.unpool = nn.Sequential(nn.Upsample(scale_factor=2.0), nn.Conv2d(channels, channels, kernel_size=3, stride=1, padding=1))
+        else:
+            self.unpool = nn.Upsample(scale_factor=2.0, mode="nearest")
 
     def forward(self, x):
-        return F.conv_transpose2d(x, self.weights.repeat(x.size(1),1,1,1), groups=x.size(1), stride=2, padding=(self.pad,))
+        return self.unpool(x)
     
 
 class ResnetBlock2D(nn.Module):
-    def __init__(self, channels_in, channels_out, mode="default", num_groups=32, dropout=0.0, channels_emb=None, scale_shift_norm=True, use_checkpoint=False, compile=False):
+    def __init__(self, channels_in, channels_out, mode="default", num_groups=32, dropout=0.0, channels_emb=None, scale_shift_norm=True, use_checkpoint=False, compile=False,
+                 learnable_pool=False):
         super().__init__()
 
         self.use_checkpoint = use_checkpoint
@@ -52,9 +54,9 @@ class ResnetBlock2D(nn.Module):
         
         blocks_in = [nn.GroupNorm(num_groups, channels_in), nn.SiLU()]
         if mode=="up":
-            blocks_in += [Upsample2D()]
+            blocks_in += [Upsample2D(channels_in, learnable_pool)]
         elif mode=="down":
-            blocks_in += [Downsample2D()]
+            blocks_in += [Downsample2D(channels_in, learnable_pool)]
         blocks_in += [nn.Conv2d(channels_in, channels_out, kernel_size=3, stride=1, padding=1, bias=True)]
         if self.scale_shift_norm:
             blocks_in += [nn.GroupNorm(num_groups, channels_out)]
@@ -73,9 +75,9 @@ class ResnetBlock2D(nn.Module):
 
         skip = []
         if mode=="up":
-            skip += [Upsample2D()]
+            skip += [Upsample2D(channels_in, False)]
         elif mode=="down":
-            skip += [Downsample2D()]
+                skip += [Downsample2D(channels_in, False)]
         if mode!="default" or channels_in!=channels_out:
             skip += [nn.Conv2d(channels_in, channels_out, kernel_size=1, stride=1, padding=0, bias=True)]
         

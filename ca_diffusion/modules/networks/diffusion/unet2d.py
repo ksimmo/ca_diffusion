@@ -9,7 +9,7 @@ from ca_diffusion.modules.conv.blocks2d import ResnetBlock2D, Attention2D
 
 
 class Encoder(nn.Module):
-    def __init__(self, channels_in, channels, channels_z, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True,
+    def __init__(self, channels_in, channels, channels_z, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True, doublez=False,
                  compile=False, use_checkpoint=False):
         super().__init__()
 
@@ -36,12 +36,46 @@ class Encoder(nn.Module):
                 self.downblocks.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
         
         self.proj_out = nn.Sequential(nn.GroupNorm(32, channels_b), nn.SiLU(),
-                                      nn.Conv2d(channels_b, channels_z, kernel_size=3, stride=1, padding=1, bias=True))
+                                      nn.Conv2d(channels_b, channels_z*2 if doublez else channels_z, kernel_size=3, stride=1, padding=1, bias=True))
 
 
     def forward(self, x):
         x = self.proj_in(x)
         for block in self.downblocks:
+            x = block(x)
+        return self.proj_out(x)
+    
+class Decoder(nn.Module):
+    def __init__(self, channels_out, channels, channels_z, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True,
+                 compile=False, use_checkpoint=False):
+        super().__init__()
+
+        self.channel_mult = [1] + channel_mult
+
+        channels_a = self.channel_mult[-1]*channels
+        self.proj_in = nn.Conv2d(channels_z, channels_a, kernel_size=3, stride=1, padding=1)
+
+        self.upblocks = nn.ModuleList()
+        for j in range(num_blocks):
+            self.upblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", compile=compile, use_checkpoint=use_checkpoint))
+            if -1 in attn_res:
+                self.upblocks.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
+        for i in reversed(range(len(self.channel_mult)-1)):
+            channels_b = self.channel_mult[i]*channels
+            channels_a = self.channel_mult[i+1]*channels
+
+            self.upblocks.append(ResnetBlock2D(channels_a, channels_b, mode="up", compile=compile, use_checkpoint=use_checkpoint))
+            for j in range(num_blocks):
+                self.upblocks.append(ResnetBlock2D(channels_b, channels_b, mode="default", compile=compile, use_checkpoint=use_checkpoint))
+                if i+1 in attn_res:
+                    self.upblocks.append(Attention2D(channels_b, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
+
+        self.proj_out = nn.Sequential(nn.GroupNorm(32, channels), nn.SiLU(), zero_init(nn.Conv2d(channels, channels_out, kernel_size=3, stride=1, padding=1, bias=True)))
+
+
+    def forward(self, x):
+        x = self.proj_in(x)
+        for block in self.upblocks:
             x = block(x)
         return self.proj_out(x)
     

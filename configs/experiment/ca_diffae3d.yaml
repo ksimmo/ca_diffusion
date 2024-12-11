@@ -8,8 +8,8 @@ tag: ca_video_diffusion_ae
 
 data:
   train:
-    batch_size: 10
-    num_workers: 10
+    batch_size: 12
+    num_workers: 12
     config:
       crop_size: [64,64,64]
 
@@ -17,12 +17,12 @@ model:
   encoder:
     _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
     channels_in: 1
-    channels_z: 4
+    channels_z: 8
     channel_mult: [2,4,4]
   decoder:
     _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
     channels_in: 1
-    channels_injection: 4
+    channels_injection: 8
     channel_mult: [2,4,4,8]
 
   image_mode: False
