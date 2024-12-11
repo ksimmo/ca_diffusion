@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from ca_diffusion.modules.utils import zero_init, shape_val
 from ca_diffusion.modules.conv.blocks2d import ResnetBlock2D, Attention2D
+from ca_diffusion.modules.networks.diffusion.utils import TimestepEmbedder
 
 
 class Encoder(nn.Module):
@@ -78,27 +79,6 @@ class Decoder(nn.Module):
         for block in self.upblocks:
             x = block(x)
         return self.proj_out(x)
-    
-
-class TimestepEmbedder(nn.Module):
-    def __init__(self, channels_freq, channels, learnable=False):
-        super().__init__()
-
-        if learnable:
-            self.freqs = nn.Parameter(torch.randn((1,channels_freq)))
-            self.phases = nn.Parameter(torch.rand((1,channels_freq)))
-        else:
-            self.register_buffer("freqs", torch.randn((1,channels_freq)))
-            self.register_buffer("phases", torch.rand((1,channels_freq)))
-
-        self.embedder = nn.Sequential(nn.Linear(channels_freq, channels), nn.SiLU(), nn.Linear(channels,channels))
-
-    def forward(self, t):
-        freqs = shape_val(self.freqs.to(torch.float32), t, pos=0)
-        phases = shape_val(self.phases.to(torch.float32), t, pos=0)
-        emb = torch.cos((freqs*t.to(torch.float32).unsqueeze(-1)+phases)*2.0*np.pi)
-        return self.embedder(emb.to(t.dtype))
-
         
 
 class UNet(nn.Module):

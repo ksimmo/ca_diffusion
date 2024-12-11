@@ -11,12 +11,14 @@ class Autoencoder(pl.LightningModule):
                  optimizer: torch.optim.Optimizer,
                  scheduler: torch.optim.lr_scheduler=None,
                  image_mode: bool=True,
-                 ignore_param: list=[]):
+                 ignore_param: list=[],
+                 data_key: str="image"):
         super().__init__()
 
         self.save_hyperparameters(ignore=["encoder", "decoder"]+ignore_param, logger=False) #do net hyperparams to logger
 
         self.image_mode = image_mode
+        self.data_key = data_key
 
         self.encoder = encoder
         self.decoder = decoder
@@ -31,9 +33,9 @@ class Autoencoder(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         log = {}
 
-        z = self.encode(batch["image"])
+        z = self.encode(batch[self.data_key])
         rec = self.decode(z)
-        loss = F.mse_loss(rec, batch["image"], reduction="mean")
+        loss = F.mse_loss(rec, batch[self.data_key], reduction="mean")
         log["train/rec_loss"] = loss.item()
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         return loss
@@ -41,9 +43,9 @@ class Autoencoder(pl.LightningModule):
     
     def validation_step(self, batch, batch_idx):
         log = {}
-        z = self.encode(batch["image"])
+        z = self.encode(batch[self.data_key])
         rec = self.decode(z)
-        loss = F.mse_loss(rec, batch["image"], reduction="mean")
+        loss = F.mse_loss(rec, batch[self.data_key], reduction="mean")
         log["val/rec_loss"] = loss.item()
         self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
     
@@ -72,9 +74,9 @@ class Autoencoder(pl.LightningModule):
     @torch.no_grad()
     def log_images(self, batch, **kwargs):
         log = {}
-        gt = batch["image"]
+        gt = batch[self.data_key]
 
-        z = self.encode(batch["image"])
+        z = self.encode(gt)
 
         if self.image_mode:
             samples = [gt.cpu().unsqueeze(2)]
@@ -89,20 +91,16 @@ class Autoencoder(pl.LightningModule):
             gt = torch.cat([torch.mean(gt, dim=2).unsqueeze(2), gt], dim=2).cpu()
             sample = torch.cat([torch.mean(sample, dim=2).unsqueeze(2), sample], dim=2).cpu()
 
-            T = min(16, len(gt))
+            T = min(16, gt.size(2))
             log["samples"] = torch.cat([gt[:,:,:T], sample[:,:,:T]], dim=-2)
         return log
     
 
 class AutoencoderGAN(Autoencoder):
     def __init__(self,
-                 encoder: nn.Module, 
-                 decoder: nn.Module,
                  discriminator: nn.Module,
-                 optimizer: torch.optim.Optimizer,
-                 scheduler: torch.optim.lr_scheduler=None,
-                 image_mode: bool=True):
-        super().__init__(encoder=encoder, decoder=decoder, optimizer=optimizer, scheduler=scheduler, image_mode=image_mode, ignore_param=["discriminator"])
+                 **kwargs):
+        super().__init__(ignore_param=["discriminator"], **kwargs)
 
         self.discriminator = discriminator
 
@@ -116,11 +114,11 @@ class AutoencoderGAN(Autoencoder):
         #update generator
         self.toggle_optimizer(optim_g)
         optim_g.zero_grad()
-        z = self.encode(batch["image"])
+        z = self.encode(batch[self.data_key])
         rec = self.decode(z)
         pred_fake = self.discriminator(rec)
 
-        loss_rec = F.mse_loss(rec, batch["image"], reduction="mean")
+        loss_rec = F.mse_loss(rec, batch[self.data_key], reduction="mean")
         loss_g = torch.mean(-pred_fake)
         
         loss = loss_rec + loss_g
@@ -135,7 +133,7 @@ class AutoencoderGAN(Autoencoder):
         self.toggle_optimizer(optim_d)
         optim_d.zero_grad()
 
-        pred_real = self.discriminator(batch["image"])
+        pred_real = self.discriminator(batch[self.data_key])
         pred_fake = self.discriminator(rec.detach())
         loss_real = torch.mean(F.relu(1.0-pred_real))
         loss_fake = torch.mean(F.relu(1.0+pred_fake))
@@ -167,14 +165,10 @@ class AutoencoderGAN(Autoencoder):
 
 class DiffusionAutoencoder(Autoencoder):
     def __init__(self,
-                 encoder: nn.Module, 
-                 decoder: nn.Module,
                  diffusor: nn.Module,
-                 optimizer: torch.optim.Optimizer,
-                 scheduler: torch.optim.lr_scheduler=None,
-                 image_mode: bool=True,
-                 noise_shape=(1,64,64)):
-        super().__init__(encoder=encoder, decoder=decoder, optimizer=optimizer, scheduler=scheduler, image_mode=image_mode, ignore_param=["diffusor"])
+                 noise_shape=(1,64,64),
+                 **kwargs):
+        super().__init__(ignore_param=["diffusor"], **kwargs)
 
         self.noise_shape = noise_shape
         self.diffusor = diffusor
@@ -194,9 +188,9 @@ class DiffusionAutoencoder(Autoencoder):
     def training_step(self, batch, batch_idx):
         log = {}
 
-        z = self.encode(batch["image"])
+        z = self.encode(batch[self.data_key])
         model_args = {"inj": z}
-        loss, loss_dict, data_dict = self.diffusor(self.decoder, batch["image"], model_args=model_args)
+        loss, loss_dict, data_dict = self.diffusor(self.decoder, batch[self.data_key], model_args=model_args)
         for k, v in loss_dict.items():
             log["train/"+k] = v
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
@@ -205,9 +199,9 @@ class DiffusionAutoencoder(Autoencoder):
     
     def validation_step(self, batch, batch_idx):
         log = {}
-        z = self.encode(batch["image"])
+        z = self.encode(batch[self.data_key])
         model_args = {"inj": z}
-        loss, loss_dict, data_dict = self.diffusor(self.decoder, batch["image"], model_args=model_args)
+        loss, loss_dict, data_dict = self.diffusor(self.decoder, batch[self.data_key], model_args=model_args)
         for k, v in loss_dict.items():
             log["val/"+k] = v
         self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
