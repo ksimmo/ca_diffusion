@@ -1,4 +1,4 @@
-_target_: ca_diffusion.models.diffusion_autoencoder.DiffusionAutoencoder
+_target_: ca_diffusion.models.autoencoder.DiffusionAutoencoder
 
 encoder:
   _target_: ca_diffusion.modules.networks.diffusion.unet2d.Encoder
@@ -11,7 +11,7 @@ encoder:
   num_heads: 8
   qkv_bias: True
   qk_norm: True
-  compile: True
+  compile: False
   use_checkpoint: False
 
 decoder:
@@ -26,7 +26,7 @@ decoder:
   qkv_bias: True
   qk_norm: True
   channels_freq: 256
-  compile: True
+  compile: False
   use_checkpoint: False
   channels_injection: 4
   injection_res: 4

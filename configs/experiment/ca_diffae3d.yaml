@@ -17,15 +17,22 @@ model:
   encoder:
     _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
     channels_in: 1
-    channels_z: 8
+    channels_z: 16
     channel_mult: [2,4,4]
+    causal: False
+    learnable_pool: False
+    compile: True
   decoder:
     _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
     channels_in: 1
-    channels_injection: 8
+    channels_injection: 16
     channel_mult: [2,4,4,8]
+    causal: False
+    learnable_pool: False
+    compile: True
 
   image_mode: False
+  noise_shape: [1,64,64,64]
 
 trainer:
   gradient_clip_val: 1.0

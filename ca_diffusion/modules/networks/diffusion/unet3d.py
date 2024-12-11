@@ -10,7 +10,7 @@ from ca_diffusion.modules.conv.blocks3d import Conv3D, ResnetBlock3D, Attention3
 
 class Encoder(nn.Module):
     def __init__(self, channels_in, channels, channels_z, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True, doublez=False,
-                 compile=False, use_checkpoint=False, causal=False, learnable_pool=False):
+                 compile=False, use_checkpoint=False, causal=False, learnable_pool=False, mode_res=None):
         super().__init__()
 
         self.channel_mult = [1] + channel_mult
@@ -23,12 +23,17 @@ class Encoder(nn.Module):
             channels_a = self.channel_mult[i]*channels
             channels_b = self.channel_mult[i+1]*channels
 
+            if mode_res is None:
+                encoder_mode = ""
+            else:
+                encoder_mode = "_"+mode_res[i] if mode_res[i] != "" else ""
+
             for j in range(num_blocks):
                 self.downblocks.append(ResnetBlock3D(channels_a, channels_a, mode="default", compile=compile, use_checkpoint=use_checkpoint,
                                                      causal=causal, learnable_pool=learnable_pool))
                 if i+1 in attn_res:
                     self.downblocks.append(Attention3D(channels_a, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
-            self.downblocks.append(ResnetBlock3D(channels_a, channels_b, mode="down", compile=compile, use_checkpoint=use_checkpoint,
+            self.downblocks.append(ResnetBlock3D(channels_a, channels_b, mode="down"+encoder_mode, compile=compile, use_checkpoint=use_checkpoint,
                                                  causal=causal, learnable_pool=learnable_pool))
 
 
@@ -51,7 +56,7 @@ class Encoder(nn.Module):
     
 class Decoder(nn.Module):
     def __init__(self, channels_out, channels, channels_z, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True,
-                 compile=False, use_checkpoint=False, causal=False, learnable_pool=False):
+                 compile=False, use_checkpoint=False, causal=False, learnable_pool=False, mode_res=None):
         super().__init__()
 
         self.channel_mult = [1] + channel_mult
@@ -69,7 +74,12 @@ class Decoder(nn.Module):
             channels_b = self.channel_mult[i]*channels
             channels_a = self.channel_mult[i+1]*channels
 
-            self.upblocks.append(ResnetBlock3D(channels_a, channels_b, mode="up", compile=compile, use_checkpoint=use_checkpoint,
+            if mode_res is None:
+                decoder_mode = ""
+            else:
+                decoder_mode = "_"+mode_res[i] if mode_res[i] != "" else ""
+
+            self.upblocks.append(ResnetBlock3D(channels_a, channels_b, mode="up"+decoder_mode, compile=compile, use_checkpoint=use_checkpoint,
                                                causal=causal, learnable_pool=learnable_pool))
             for j in range(num_blocks):
                 self.upblocks.append(ResnetBlock3D(channels_b, channels_b, mode="default", compile=compile, use_checkpoint=use_checkpoint,
@@ -110,7 +120,8 @@ class TimestepEmbedder(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self, channels_in, channels, channels_emb, channels_out=None, channel_mult=[2,4], num_blocks=2, attn_res=[], num_heads=8, qkv_bias=True, qk_norm=True,
-                 channels_freq=256, compile=False, use_checkpoint=False, channels_injection=None, injection_res=None, causal=False, learnable_pool=False):
+                 channels_freq=256, compile=False, use_checkpoint=False, channels_injection=None, injection_res=None, causal=False, learnable_pool=False,
+                 mode_res=None):
         super().__init__()
 
         channels_out = channels_in if channels_out is None else channels_out
@@ -133,6 +144,11 @@ class UNet(nn.Module):
             channels_a = self.channel_mult[i]*channels
             channels_b = self.channel_mult[i+1]*channels
 
+            if mode_res is None:
+                encoder_mode = ""
+            else:
+                encoder_mode = "_"+mode_res[i] if mode_res[i] != "" else ""
+
             if self.use_injection and i+1==injection_res:
                 self.injection_proj = Conv3D(channels_injection, channels_a, kernel_size=3, stride=1, padding=1, bias=True, causal=causal)
 
@@ -147,7 +163,7 @@ class UNet(nn.Module):
                 #self.skips.append()
                 if i+1 in attn_res:
                     self.downblocks.append(Attention3D(channels_a, num_heads=num_heads, qkv_bias=qkv_bias, qk_norm=qk_norm, compile=compile, use_checkpoint=use_checkpoint))
-            self.downblocks.append(ResnetBlock3D(channels_a, channels_b, mode="down", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint,
+            self.downblocks.append(ResnetBlock3D(channels_a, channels_b, mode="down"+encoder_mode, channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint,
                                                  causal=causal, learnable_pool=learnable_pool))
             skip_channels.append(channels_b)
             #self.skips.append()
@@ -185,7 +201,12 @@ class UNet(nn.Module):
             channels_b = self.channel_mult[i]*channels
             channels_a = self.channel_mult[i+1]*channels
 
-            self.upblocks.append(ResnetBlock3D(channels_a, channels_b, mode="up", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint,
+            if mode_res is None:
+                decoder_mode = ""
+            else:
+                decoder_mode = "_"+mode_res[i] if mode_res[i] != "" else ""
+
+            self.upblocks.append(ResnetBlock3D(channels_a, channels_b, mode="up"+decoder_mode, channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint,
                                                causal=causal, learnable_pool=learnable_pool))
             for j in range(num_blocks+1):
                 self.upblocks.append(ResnetBlock3D(channels_b+skip_channels.pop(), channels_b, mode="default", channels_emb=channels_emb, compile=compile, use_checkpoint=use_checkpoint,

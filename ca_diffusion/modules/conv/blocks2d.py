@@ -23,9 +23,7 @@ class Downsample2D(nn.Module):
     def forward(self, x):
         if self.learnable:
             x = F.pad(x, (0,1,0,1), mode="constant", value=0) #pad asymetrically
-            return self.pool(x)
-        else:
-            return self.pool(x)
+        return self.pool(x)
 
 
 class Upsample2D(nn.Module):

@@ -34,7 +34,7 @@ class Conv3D(nn.Conv3d):
     def forward(self, x):
         if self.pad_temporal>0 and self.causal:
             x = F.pad(x, (0,0,0,0,self.pad_temporal,0), mode="replicate")
-        return super.forward(x)
+        return super().forward(x)
 
 
 class Downsample3D(nn.Module):
@@ -79,20 +79,21 @@ class Downsample3D(nn.Module):
 
     def forward(self, x):
         if self.causal:
-            T = x.size(2)
+            B,T = x.size(0), x.size(2)
             if self.temporal and T>1:
                 #split
                 x_first = x[:,:,0:1]
                 x_rest = x[:,:,1:]
                 x_rest = self.pool_t(x_rest)
                 x = torch.cat([x_first, x_rest], dim=2)
-
             x = rearrange(x, "b c t h w -> (b t) c h w")
+            if self.learnable and self.spatial:
+                x = F.pad(x, (0,1,0,1), mode="constant", value=0)
             x = self.pool_sp(x)
-            x = rearrange(x, "(b t ) c h w -> b c t h w")
+            x = rearrange(x, "(b t) c h w -> b c t h w", b=B)
         else:
             if self.learnable:
-                x = F.pad(x, self.pad, mode="constant" value=0)
+                x = F.pad(x, self.pad, mode="constant", value=0)
                 x = self.pool(x)
             else:
                 x = self.pool(x)        
@@ -116,9 +117,9 @@ class Upsample3D(nn.Module):
                 self.unpool_sp = nn.Identity()
 
             if self.temporal:
-                self.pool_t = nn.Upsample(scale_factor=(2.0,1.0,1.0), mode="nearest")
+                self.unpool_t = nn.Upsample(scale_factor=(2.0,1.0,1.0), mode="nearest")
             else:
-                self.pool_t = nn.Identity()
+                self.unpool_t = nn.Identity()
         else:
             unpool = []
             if spatial and temporal:
@@ -137,7 +138,7 @@ class Upsample3D(nn.Module):
 
     def forward(self, x):
         if self.causal:
-            T = x.size(2)
+            B,T = x.size(0), x.size(2)
             if self.temporal and T>1:
                 #split
                 x_first = x[:,:,0:1]
@@ -147,7 +148,7 @@ class Upsample3D(nn.Module):
             #do spatial upsampling if necessary
             x = rearrange(x, "b c t h w -> (b t) c h w")
             x = self.unpool_sp(x)
-            x = rearrange(x, "(b t ) c h w -> b c t h w")
+            x = rearrange(x, "(b t ) c h w -> b c t h w", b=B)
         else:
             x = self.unpool(x)     
         return x
@@ -191,10 +192,10 @@ class ResnetBlock3D(nn.Module):
 
         skip = []
         if "up" in mode:
-            blocks_in += [Upsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
+            skip += [Upsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
                                      causal=causal, learnable=False)]
         elif "down" in mode:
-            blocks_in += [Downsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
+            skip += [Downsample3D(channels_in, spatial=False if "tp" in mode else True, temporal=False if "sp" in mode else True, 
                                        causal=causal, learnable=False)]
         if mode!="default" or channels_in!=channels_out:
             skip += [Conv3D(channels_in, channels_out, kernel_size=1, stride=1, padding=0, bias=True, causal=causal)]

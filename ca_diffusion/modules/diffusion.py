@@ -53,7 +53,7 @@ class FlowMatching(Diffusor):
 
         return xt, eps
     
-    def forward(self, model, x, t=None, loss_mask=None, model_args={}):
+    def forward(self, model, x, t=None, loss_mask=None, model_args={}, return_data=False):
         if t is None:
             if self.timestep_sampling=="linear":
                 t = torch.rand((x.size(0),), device=x.device) #uniform sampling of t
@@ -86,7 +86,12 @@ class FlowMatching(Diffusor):
         loss_dict = {}
         loss_dict["fm_loss"] = loss.item()
 
-        return loss, loss_dict
+        data_dict = {}
+        if return_data:
+            data_dict["eps"] = eps
+            #data_dict["pred_x0"] = xt+pred*(1.0-self.sigma_min)
+
+        return loss, loss_dict, data_dict
 
     def sample_euler(self, model, noise, num_steps=50, model_args={}):
         ts = torch.linspace(1.0, self.sigma_min, num_steps).to(noise.device)
