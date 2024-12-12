@@ -25,7 +25,7 @@ class Autoencoder(pl.LightningModule):
         self.decode_args = {}
 
     def encode(self, x):
-        x = self.encoder(x)
+        return self.encoder(x)
 
     def decode(self, z):
         return self.decoder(z)

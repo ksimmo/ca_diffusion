@@ -53,8 +53,8 @@ class Decoder(nn.Module):
 
         self.channel_mult = [1] + channel_mult
 
-        channels_a = self.channel_mult[-1]*channels
-        self.proj_in = nn.Conv2d(channels_z, channels_a, kernel_size=3, stride=1, padding=1)
+        channels_b = self.channel_mult[-1]*channels
+        self.proj_in = nn.Conv2d(channels_z, channels_b, kernel_size=3, stride=1, padding=1)
 
         self.upblocks = nn.ModuleList()
         for j in range(num_blocks):
@@ -172,7 +172,7 @@ class UNet(nn.Module):
         for block in self.downblocks:
             if not isinstance(block, Attention2D):
                 #inject
-                if hasattr(block, "mode") and not injected:
+                if hasattr(block, "mode") and not injected and self.injection_res>-1:
                     if block.mode=="default":
                         if x.size(-2)==inj.size(-2) and x.size(-1)==inj.size(-1):
                             x = torch.cat([x,self.injection_proj(inj)], dim=1)

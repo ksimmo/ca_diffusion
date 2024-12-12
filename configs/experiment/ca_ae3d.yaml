@@ -1,10 +1,10 @@
 # @package _global_
 defaults:
   - override /data: neurofinder_image
-  - override /model: ca_image_diffusion_ae
+  - override /model: ca_image_ae
   - override /trainer: default
 
-tag: ca_video_diffusion_ae
+tag: ca_video_ae
 
 data:
   train:
@@ -18,20 +18,19 @@ model:
     _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
     channels_in: 1
     channels_z: 16
-    channel_mult: [2,4,4]
     causal: True
     learnable_pool: False
     compile: True
+    
   decoder:
-    _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
-    channels_in: 1
-    channels_injection: 16
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.Decoder
+    channels_out: 1
+    channels_z: 16
     causal: True
     learnable_pool: False
     compile: True
 
   image_mode: False
-  noise_shape: [1,65,64,64]
 
 trainer:
   gradient_clip_val: 1.0

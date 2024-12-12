@@ -1,4 +1,4 @@
-_target_: ca_diffusion.models.autoencoder.DiffusionAutoencoder
+_target_: ca_diffusion.models.autoencoder.Autoencoder
 
 encoder:
   _target_: ca_diffusion.modules.networks.diffusion.unet2d.Encoder
@@ -15,24 +15,17 @@ encoder:
   use_checkpoint: False
 
 decoder:
-  _target_: ca_diffusion.modules.networks.diffusion.unet2d.UNet
-  channels_in: 3
+  _target_: ca_diffusion.modules.networks.diffusion.unet2d.Decoder
+  channels_out: 3
   channels: 32
-  channels_emb: 512
   channel_mult: [2,4,8]
   num_blocks: 2
   attn_res: [4,-1]
   num_heads: 8
   qkv_bias: True
   qk_norm: True
-  channels_freq: 256
   compile: False
   use_checkpoint: False
-  channels_injection: 4
-  injection_res: -1
-
-diffusor:
-  _target_: ca_diffusion.modules.diffusion.FlowMatching
 
 optimizer:
   _target_: torch.optim.AdamW
