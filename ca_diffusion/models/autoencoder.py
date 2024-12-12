@@ -4,12 +4,46 @@ import torch.nn.functional as F
 
 import lightning.pytorch as pl
 
+#TODO: maybe put this in a separate file to support multiple distributions
+#Gaussian distribution used for VAE
+class GaussianDistribution():
+    def __init__(self, z, deterministic=False, dim=1):
+        self.deterministic = deterministic
+        self.data = z
+        if deterministic:
+            self.mean = z
+        else:
+            self.mean, self.logvar = torch.chunk(z, 2, dim=dim)
+
+    def sample(self, noise=None):
+        if self.deterministic:
+            return self.mean
+        else:
+            if noise is None:
+                noise = torch.randn_like(self.mean)
+            return self.mean + torch.exp(self.logvar*0.5)*noise
+    
+    def kl(self, other=None):
+        if self.deterministic:
+            return torch.Tensor([0]).to(self.data.device)
+        else:
+            if other is None:
+                 kl = 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar)
+                 return kl/float(self.data.size(0))
+            else:
+                kl = 0.5 * torch.sum(torch.pow(self.mean-other.mean, 2)/other.var + self.var/other.var - 1.0 - self.logvar + other.logvar)
+                return kl/float(self.data.size(0))
+            
+
+
 class Autoencoder(pl.LightningModule):
     def __init__(self,
                  encoder: nn.Module, 
                  decoder: nn.Module,
                  optimizer: torch.optim.Optimizer,
                  scheduler: torch.optim.lr_scheduler=None,
+                 deterministic_z: bool=True,
+                 noise_shape=(1,64,64),
                  image_mode: bool=True,
                  ignore_param: list=[],
                  data_key: str="image"):
@@ -17,6 +51,8 @@ class Autoencoder(pl.LightningModule):
 
         self.save_hyperparameters(ignore=["encoder", "decoder"]+ignore_param, logger=False) #do net hyperparams to logger
 
+        self.deterministic_z = deterministic_z
+        self.noise_shape = noise_shape
         self.image_mode = image_mode
         self.data_key = data_key
 
@@ -25,9 +61,11 @@ class Autoencoder(pl.LightningModule):
         self.decode_args = {}
 
     def encode(self, x):
-        return self.encoder(x)
+        z = self.encoder(x)
+        return GaussianDistribution(z, deterministic=self.deterministic_z)
 
-    def decode(self, z):
+    def decode(self, z, noise=None):
+        z = z.sample(noise)
         return self.decoder(z)
     
     def training_step(self, batch, batch_idx):
@@ -35,7 +73,7 @@ class Autoencoder(pl.LightningModule):
 
         z = self.encode(batch[self.data_key])
         rec = self.decode(z)
-        loss = F.mse_loss(rec, batch[self.data_key], reduction="mean")
+        loss = F.mse_loss(rec, batch[self.data_key], reduction="mean") #/float(z.size(0))
         log["train/rec_loss"] = loss.item()
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         return loss
@@ -45,7 +83,7 @@ class Autoencoder(pl.LightningModule):
         log = {}
         z = self.encode(batch[self.data_key])
         rec = self.decode(z)
-        loss = F.mse_loss(rec, batch[self.data_key], reduction="mean")
+        loss = F.mse_loss(rec, batch[self.data_key], reduction="mean") #/float(z.size(0))
         log["val/rec_loss"] = loss.item()
         self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
     
@@ -118,7 +156,7 @@ class AutoencoderGAN(Autoencoder):
         rec = self.decode(z)
         pred_fake = self.discriminator(rec)
 
-        loss_rec = F.mse_loss(rec, batch[self.data_key], reduction="mean")
+        loss_rec = F.mse_loss(rec, batch[self.data_key], reduction="mean") #/float(z.size(0))
         loss_g = torch.mean(-pred_fake)
         
         loss = loss_rec + loss_g
@@ -166,20 +204,15 @@ class AutoencoderGAN(Autoencoder):
 class DiffusionAutoencoder(Autoencoder):
     def __init__(self,
                  diffusor: nn.Module,
-                 noise_shape=(1,64,64),
                  **kwargs):
         super().__init__(ignore_param=["diffusor"], **kwargs)
 
-        self.noise_shape = noise_shape
         self.diffusor = diffusor
         self.decode_args = {"strategy": "euler",
                             "num_steps": 50}
-
-    def encode(self, x):
-        return self.encoder(x)
     
     def decode(self, z, noise=None, **sample_args):
-        model_args={"inj": z}
+        model_args={"inj": z.sample()}
         if noise is None:
             noise = self.diffusor.sample_noise([z.size(0)]+list(self.noise_shape)).to(self.device)
         sample = self.diffusor.sample(self.decoder, noise, model_args=model_args, **sample_args)
@@ -189,7 +222,7 @@ class DiffusionAutoencoder(Autoencoder):
         log = {}
 
         z = self.encode(batch[self.data_key])
-        model_args = {"inj": z}
+        model_args = {"inj": z.sample()}
         loss, loss_dict, data_dict = self.diffusor(self.decoder, batch[self.data_key], model_args=model_args)
         for k, v in loss_dict.items():
             log["train/"+k] = v
@@ -200,7 +233,7 @@ class DiffusionAutoencoder(Autoencoder):
     def validation_step(self, batch, batch_idx):
         log = {}
         z = self.encode(batch[self.data_key])
-        model_args = {"inj": z}
+        model_args = {"inj": z.sample()}
         loss, loss_dict, data_dict = self.diffusor(self.decoder, batch[self.data_key], model_args=model_args)
         for k, v in loss_dict.items():
             log["val/"+k] = v

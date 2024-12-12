@@ -61,3 +61,11 @@ class DiffusionModel(pl.LightningModule):
         log["samples"] = torch.cat([gt.unsqueeze(2), sample.unsqueeze(2), sample2.unsqueeze(2)], dim=2)
         return log
 
+
+
+class LatentDiffusionModel(DiffusionModel):
+    def __init__(self,
+                 first_stage: nn.Module,
+                 **kwargs):
+        super().__init__(ignore_param=["first_stage"], **kwargs)
+
