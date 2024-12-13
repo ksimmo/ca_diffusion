@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 
+from deepspeed.runtime.activation_checkpointing import checkpointing
+
+USE_DEEPSPEED = False
+
 def shape_val(x, y, pos=-1):
     """
     adds channels at pos such that dim(x) matches dim(y)
@@ -11,7 +15,10 @@ def shape_val(x, y, pos=-1):
 
 def checkpoint(function, use_checkpoint=True, *args, **kwargs):
     if use_checkpoint:
-        return torch.utils.checkpoint.checkpoint(function, *args, **kwargs)
+        if USE_DEEPSPEED: #deepspeed has its own checkpointing
+            return checkpointing.checkpoint(function, *args, **kwargs)
+        else:
+            return torch.utils.checkpoint.checkpoint(function, *args, **kwargs)
     else:
         return function(*args, **kwargs)
 

@@ -38,6 +38,8 @@ def main(cfg: DictConfig):
 
     trainer = Trainer(callbacks=callbacks, logger=logger, plugins=plugins, **trainer_kwargs)
 
+    #check if we are using deepspeed -> if yes, patch checkpointing
+
     #start training
     trainer.fit(model, datamodule, ckpt_path=cfg.get("ckpt_path", None))
 

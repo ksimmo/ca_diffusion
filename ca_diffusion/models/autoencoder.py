@@ -35,7 +35,7 @@ class GaussianDistribution():
                 return kl/float(self.data.size(0))
             
 
-
+#TODO: add EMA
 class Autoencoder(pl.LightningModule):
     def __init__(self,
                  encoder: nn.Module, 
@@ -214,7 +214,7 @@ class DiffusionAutoencoder(Autoencoder):
     def decode(self, z, noise=None, **sample_args):
         model_args={"inj": z.sample()}
         if noise is None:
-            noise = self.diffusor.sample_noise([z.size(0)]+list(self.noise_shape)).to(self.device)
+            noise = self.diffusor.sample_noise([z.data.size(0)]+list(self.noise_shape)).to(self.device)
         sample = self.diffusor.sample(self.decoder, noise, model_args=model_args, **sample_args)
         return sample
 

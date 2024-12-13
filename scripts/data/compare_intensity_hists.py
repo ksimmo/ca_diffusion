@@ -43,8 +43,11 @@ if __name__ == "__main__":
     plt.figure(dpi=300)
     plt.yscale("log")
     for i in range(len(shapes)):
-        b = bins[i]/bins[i][-1]*4000
-        b = np.floor(b)
+        b = bins[i]
+        if len(b)>4000:
+            b = b/b[-1]*4000
+            b = np.floor(b)
+        b = b/4000.0
         plt.plot(b, vals[i]/np.prod(shapes[i]), alpha=0.5)
     plt.savefig("../../outputs/plots/intensity_histograms_binned.png")
     plt.close()

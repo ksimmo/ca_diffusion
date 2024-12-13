@@ -7,7 +7,8 @@ import h5py
 import json
 
 class CalciumDataset(torch.utils.data.Dataset):
-    def __init__(self, root_dir, crop_size=[64,64], num_crops_per_video=100, use_video_segments=True, augment_intensity=False, load_annotations=False):
+    def __init__(self, root_dir, crop_size=[64,64], num_crops_per_video=100, use_video_segments=True, augment_intensity=False, load_annotations=False,
+                        fixed_intensity_binning=False):
         super().__init__()
 
         self.root_dir = root_dir
@@ -16,6 +17,7 @@ class CalciumDataset(torch.utils.data.Dataset):
         self.use_video_segments = use_video_segments
         self.augment_intensity = augment_intensity
         self.load_annotations = load_annotations
+        self.fixed_intensity_binning = fixed_intensity_binning
 
         self.image_mode = len(crop_size)==2
         self.video_names = []
@@ -128,17 +130,17 @@ class CalciumDataset(torch.utils.data.Dataset):
         video = data[0]
 
         #most of the videos have a maximum around 4000, some videos however have over 60k
-        """
-        max_intensity = self.video_metadata[video_index]["max_intensity"]
-        if max_intensity>4000:
-            video = video/max_intensity*4000.0 #scale such that maximum is also around 4000
-            video = torch.floor(video) #so we have the same bincount
-        video = video/4000.0 #scale by max
-        video = (video-0.5)/0.5 #map to [-1,1]
-        """
-
-        max_intensity = self.video_metadata[video_index]["max_intensity"]
-        video = video/max_intensity
+        if self.fixed_intensity_binning:
+            #make sure each video has the same intensity bin size
+            max_intensity = self.video_metadata[video_index]["max_intensity"]
+            if max_intensity>4000:
+                #rescale video nad fix the bins
+                video = video/max_intensity*4000.0
+                video = np.floor(video)
+            video = video/4000.0
+        else:
+            max_intensity = self.video_metadata[video_index]["max_intensity"]
+            video = video/max_intensity
         video = (video-0.5)/0.5
 
         element = {"image": video}
