@@ -1,0 +1,43 @@
+_target_: ca_diffusion.models.autoencoder.AutoencoderGAN
+
+encoder:
+  _target_: ca_diffusion.modules.networks.diffusion.unet2d.Encoder
+  channels_in: 3
+  channels: 32
+  channels_z: 4
+  channel_mult: [2,4,8]
+  num_blocks: 2
+  attn_res: [4,-1]
+  num_heads: 8
+  qkv_bias: True
+  qk_norm: True
+  compile: False
+  use_checkpoint: False
+
+decoder:
+  _target_: ca_diffusion.modules.networks.diffusion.unet2d.Decoder
+  channels_out: 3
+  channels: 32
+  channel_mult: [2,4,8]
+  num_blocks: 2
+  attn_res: [4,-1]
+  num_heads: 8
+  qkv_bias: True
+  qk_norm: True
+  compile: False
+  use_checkpoint: False
+
+discriminator:
+  _target_: ca_diffusion.modules.networks.discriminator.patch_discriminator.PatchDiscriminator2D
+  channels_in: 3
+  channels: 32
+  n_layers: 2
+  channels_max: 512
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: True
+  lr: 1e-4
+  weight_decay: 0.0
+
+image_mode: True

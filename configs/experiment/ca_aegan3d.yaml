@@ -1,0 +1,45 @@
+# @package _global_
+defaults:
+  - override /data: neurofinder_image
+  - override /model: ca_image_aegan
+  - override /trainer: default
+
+tag: ca_video_aegan
+
+data:
+  train:
+    batch_size: 14
+    num_workers: 14
+    config:
+      crop_size: [65,64,64]
+      fixed_intensity_binning: True   
+
+model:
+  encoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
+    channels_in: 1
+    channels_z: 16
+    causal: True
+    learnable_pool: False
+    compile: True
+    
+  decoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.Decoder
+    channels_out: 1
+    channels_z: 16
+    causal: True
+    learnable_pool: False
+    compile: True
+
+  discriminator:
+    _target_: ca_diffusion.modules.networks.discriminator.patch_discriminator.PatchDiscriminator3D
+    channels_in: 1
+
+  image_mode: False
+  gan_weight: 1e-3
+
+trainer:
+  #gradient_clip_val: 1.0
+  precision: "bf16-mixed"
+  #accumulate_grad_batches: 4
+  max_epochs: 100

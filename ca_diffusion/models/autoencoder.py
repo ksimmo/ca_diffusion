@@ -45,8 +45,10 @@ class Autoencoder(pl.LightningModule):
                  deterministic_z: bool=True,
                  noise_shape=(1,64,64),
                  image_mode: bool=True,
-                 ignore_param: list=[],
-                 data_key: str="image"):
+                 data_key: str="image",
+                 ema_update_steps: int=-1,
+                 ignore_param: list=[]
+                 ):
         super().__init__()
 
         self.save_hyperparameters(ignore=["encoder", "decoder"]+ignore_param, logger=False) #do net hyperparams to logger
@@ -55,10 +57,14 @@ class Autoencoder(pl.LightningModule):
         self.noise_shape = noise_shape
         self.image_mode = image_mode
         self.data_key = data_key
+        self.ema_update_steps = ema_update_steps
 
         self.encoder = encoder
         self.decoder = decoder
         self.decode_args = {}
+
+        #set up EMA if necessary
+        self.use_ema = self.ema_update_steps>0
 
     def encode(self, x):
         z = self.encoder(x)
@@ -77,6 +83,11 @@ class Autoencoder(pl.LightningModule):
         log["train/rec_loss"] = loss.item()
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         return loss
+    
+    def on_train_batch_end(self, *args, **kwargs):
+        if self.use_ema:
+            #update EMA
+            pass
     
     
     def validation_step(self, batch, batch_idx):
@@ -137,21 +148,22 @@ class Autoencoder(pl.LightningModule):
 class AutoencoderGAN(Autoencoder):
     def __init__(self,
                  discriminator: nn.Module,
+                 gan_weight: 1.0,
                  **kwargs):
         super().__init__(ignore_param=["discriminator"], **kwargs)
 
         self.discriminator = discriminator
+        self.gan_weight = gan_weight
 
         self.automatic_optimization = False
 
+    #TODO: change manual gradient accumulation N=4
     def training_step(self, batch, batch_idx):
         log = {}
 
         optim_g, optim_d = self.optimizers()
 
         #update generator
-        self.toggle_optimizer(optim_g)
-        optim_g.zero_grad()
         z = self.encode(batch[self.data_key])
         rec = self.decode(z)
         pred_fake = self.discriminator(rec)
@@ -159,27 +171,30 @@ class AutoencoderGAN(Autoencoder):
         loss_rec = F.mse_loss(rec, batch[self.data_key], reduction="mean") #/float(z.size(0))
         loss_g = torch.mean(-pred_fake)
         
-        loss = loss_rec + loss_g
+        loss = loss_rec + loss_g*self.gan_weight
         self.manual_backward(loss)
-        optim_g.step()
-        self.untoggle_optimizer(optim_g)
+        self.clip_gradients(optim_g, gradient_clip_val=1.0, gradient_clip_algorithm="norm")
+        if (batch_idx + 1) % 4 == 0: #do gradient accumulation
+            optim_g.step()
+            optim_g.zero_grad()
+
         log["train/loss_ae_rec"] = loss_rec.item()
         log["train/loss_ae_gan"] = loss_g.item()
         log["train/loss_ae"] = loss.item()
 
         #update discriminator
-        self.toggle_optimizer(optim_d)
-        optim_d.zero_grad()
-
         pred_real = self.discriminator(batch[self.data_key])
         pred_fake = self.discriminator(rec.detach())
         loss_real = torch.mean(F.relu(1.0-pred_real))
         loss_fake = torch.mean(F.relu(1.0+pred_fake))
         loss = (loss_real+loss_fake)*0.5
         self.manual_backward(loss)
-        optim_d.step()
-        self.untoggle_optimizer(optim_d)
-        log["train/loss_d_reak"] = loss_real.item()
+        self.clip_gradients(optim_d, gradient_clip_val=1.0, gradient_clip_algorithm="norm")
+        if (batch_idx + 1) % 4 == 0: #do gradient accumulation
+            optim_d.step()
+            optim_d.zero_grad()
+
+        log["train/loss_d_real"] = loss_real.item()
         log["train/loss_d_fake"] = loss_fake.item()
         log["train/loss_d"] = loss.item()
 
@@ -194,10 +209,11 @@ class AutoencoderGAN(Autoencoder):
             scheduler_g = self.hparams.scheduler(optimizer=optimizer_g)
             scheduler_d = self.hparams.scheduler(optimizer=optimizer_d)
 
-            return {"optimizer": [optimizer_g, optimizer_d], 
-                    "lr_scheduler": [{"scheduler": scheduler_g, "interval": "step", "frequency": 1},
-                                     {"scheduler": scheduler_d, "interval": "step", "frequency": 1}]}
-        return {"optimizer": [optimizer_g, optimizer_d]}
+            return [{"optimizer": optimizer_g, 
+                    "lr_scheduler": {"scheduler": scheduler_g, "interval": "step", "frequency": 1}},
+                    {"optimizer": optimizer_d, 
+                    "lr_scheduler": {"scheduler": scheduler_g, "interval": "step", "frequency": 1}}]
+        return [{"optimizer": optimizer_g}, {"optimizer": optimizer_d}]
     
 
 
