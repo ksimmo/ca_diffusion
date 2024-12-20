@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+USE_DEEPSPEED = False
+
 #TODO take care of DeepSpeed later!!! (clone does not work for deepspeed zero3)
 class EMA(nn.Module):
     def __init__(self, model, smoothing_factor: float=0.999):

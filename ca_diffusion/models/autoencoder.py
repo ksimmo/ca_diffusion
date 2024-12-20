@@ -268,7 +268,7 @@ class AutoencoderGAN(Autoencoder):
             return [{"optimizer": optimizer_g, 
                     "lr_scheduler": {"scheduler": scheduler_g, "interval": "step", "frequency": 1}},
                     {"optimizer": optimizer_d, 
-                    "lr_scheduler": {"scheduler": scheduler_g, "interval": "step", "frequency": 1}}]
+                    "lr_scheduler": {"scheduler": scheduler_d, "interval": "step", "frequency": 1}}]
         return [{"optimizer": optimizer_g}, {"optimizer": optimizer_d}]
     
 
