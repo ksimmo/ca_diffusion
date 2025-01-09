@@ -125,6 +125,11 @@ class Autoencoder(pl.LightningModule):
         z = z.sample(noise)
         return self.decoder(z)
     
+    def forward(self, x):
+        dist = self.encode(x)
+        rec = self.decode(dist)
+        return rec
+    
     def training_step(self, batch, batch_idx):
         log = {}
 
@@ -137,8 +142,9 @@ class Autoencoder(pl.LightningModule):
     
     def on_train_batch_end(self, *args, **kwargs):
         if self.use_ema:
-            #update EMA
-            pass
+            if self.global_steps%self.ema_update_steps==0:
+                self.encoder_ema(self.encoder)
+                self.decoder_ema(self.decoder)
     
     
     def validation_step(self, batch, batch_idx):
@@ -150,7 +156,6 @@ class Autoencoder(pl.LightningModule):
         self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
     
     #uncomment to search for unused parameters or inspect gradients
-
     #def on_after_backward(self):
     #    for name, param in self.named_parameters():
     #        if param.grad is None:
@@ -158,7 +163,7 @@ class Autoencoder(pl.LightningModule):
 
     def on_before_zero_grad(self, **kwargs):
         if self.use_ema:
-            if self.global_steps%self.ema_update_steps==0:
+            if self.global_steps%self.ema_update_steps==0: #update ema every n steps
                 self.encoder_ema(self.encoder)
                 self.decoder_ema(self.decoder)
 

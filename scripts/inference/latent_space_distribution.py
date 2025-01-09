@@ -1,5 +1,5 @@
 import sys
-sys.path.append("..")
+sys.path.append("../..")
 
 import os
 from omegaconf import DictConfig, OmegaConf
@@ -131,6 +131,6 @@ if __name__ == "__main__":
     torch._dynamo.config.suppress_errors = True
 
     #TODO: make sure to do not save relative paths in the future!
-    os.chdir("..") #go back to root to make sure relative paths work    
+    os.chdir("../..") #go back to root to make sure relative paths work    
 
     main()
