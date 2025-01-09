@@ -9,7 +9,7 @@ class EMA(nn.Module):
         super().__init__()
         if smoothing_factor<0 or smoothing_factor>1.0:
             raise ValueError("Smoothing factor must be between 0 and 1")
-        self.register_buffer("smothing_factor", torch.ones(1)*smoothing_factor)
+        self.register_buffer("smoothing_factor", torch.ones(1)*smoothing_factor)
 
         #create a copy of the model parameters
         for n,p in model.named_parameters():
@@ -26,7 +26,7 @@ class EMA(nn.Module):
             if p.requires_grad:
                 newname = n.replace(".", "")
                 ema_param = self.get_buffer(newname)
-                ema_param.data.copy_(torch.lerp(ema_param, p.data, self.smoothing_factor))
+                ema_param.data.copy_(ema_param*self.smoothing_factor + p.data*(1.0-self.smoothing_factor))
 
     def save(self, model):
         #save the current model weights so we do not loose them

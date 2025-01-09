@@ -37,6 +37,7 @@ model:
 
   image_mode: False
   gan_weight: 1e-3
+  ema_update_steps: 1
 
 trainer:
   #gradient_clip_val: 1.0

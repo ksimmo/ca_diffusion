@@ -138,14 +138,7 @@ class Autoencoder(pl.LightningModule):
         loss = F.mse_loss(rec, batch[self.data_key], reduction="mean") #/float(z.size(0))
         log["train/rec_loss"] = loss.item()
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
-        return loss
-    
-    def on_train_batch_end(self, *args, **kwargs):
-        if self.use_ema:
-            if self.global_steps%self.ema_update_steps==0:
-                self.encoder_ema(self.encoder)
-                self.decoder_ema(self.decoder)
-    
+        return loss    
     
     def validation_step(self, batch, batch_idx):
         log = {}
@@ -161,12 +154,11 @@ class Autoencoder(pl.LightningModule):
     #        if param.grad is None:
     #            print(name)
 
-    def on_before_zero_grad(self, **kwargs):
+    def on_before_zero_grad(self, *args, **kwargs):
         if self.use_ema:
-            if self.global_steps%self.ema_update_steps==0: #update ema every n steps
+            if self.global_step%self.ema_update_steps==0 and self.global_step>1: #update ema every n steps
                 self.encoder_ema(self.encoder)
                 self.decoder_ema(self.decoder)
-
 
     def configure_optimizers(self):
         params = list(self.encoder.parameters()) + list(self.decoder.parameters())

@@ -1,6 +1,6 @@
 image_logger_callback:
   _target_: ca_diffusion.callbacks.ImageLogger
-  batch_frequency: 2000
+  batch_frequency: 10000
   max_images: 4
   disabled: False
   save_local: True

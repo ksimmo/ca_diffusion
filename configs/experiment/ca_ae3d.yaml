@@ -32,6 +32,7 @@ model:
     compile: True
 
   image_mode: False
+  ema_update_steps: 1
 
 trainer:
   gradient_clip_val: 1.0

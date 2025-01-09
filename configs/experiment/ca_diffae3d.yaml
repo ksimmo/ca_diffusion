@@ -33,9 +33,10 @@ model:
 
   image_mode: False
   noise_shape: [1,65,64,64]
+  ema_update_steps: 1
 
 trainer:
   gradient_clip_val: 1.0
   precision: "bf16-mixed"
   accumulate_grad_batches: 4
-  max_epochs: 100
+  max_epochs: 20
