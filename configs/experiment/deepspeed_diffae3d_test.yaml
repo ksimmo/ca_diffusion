@@ -1,0 +1,40 @@
+# @package _global_
+defaults:
+  - override /data: dummy
+  - override /model: ca_image_diffusion_ae
+  - override /trainer: default
+
+tag: ca_video_diffusion_ae
+
+data:
+  train:
+    batch_size: 14
+    num_workers: 14
+
+model:
+  encoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
+    channels_in: 1
+    channels_z: 16
+    channel_mult: [2,4,4]
+    causal: True
+    learnable_pool: False
+    compile: True
+  decoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
+    channels_in: 1
+    channels_injection: 16
+    causal: True
+    learnable_pool: False
+    compile: True
+
+  image_mode: False
+  noise_shape: [1,65,64,64]
+  #ema_update_steps: 1
+
+trainer:
+  gradient_clip_val: 1.0
+  precision: "bf16-mixed"
+  accumulate_grad_batches: 4
+  max_epochs: 20
+  strategy: "deepspeed_stage_3_offload"

@@ -1,4 +1,6 @@
+import os
 from omegaconf import DictConfig, OmegaConf
+import yaml
 
 import torch
 from lightning.pytorch import Trainer, seed_everything
@@ -11,6 +13,11 @@ from ca_diffusion.datamodule import DataModule
 @hydra.main(config_path="configs", config_name="train")
 def main(cfg: DictConfig):
     OmegaConf.resolve(cfg)
+
+    #ok save config -> one config is already saved in .hydra!!!
+    #save_cfg = OmegaConf.to_container(cfg, resolve=True)
+    #with open(os.path.join(cfg.paths.output_dir, "config.yaml"), "w") as f:
+    #    yaml.dump(save_cfg, f)
 
     seed_everything(cfg.get("seed", 42), workers=True) #set random seed for reproducibility
 
