@@ -3,6 +3,7 @@ defaults:
   - override /data: dummy
   - override /model: ca_image_diffusion_ae
   - override /trainer: default
+  - override /flags: default
 
 tag: ca_video_diffusion_ae
 
@@ -19,22 +20,33 @@ model:
     channel_mult: [2,4,4]
     causal: True
     learnable_pool: False
-    compile: True
+    compile: False
+    use_checkpoint: True
   decoder:
     _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
     channels_in: 1
     channels_injection: 16
     causal: True
     learnable_pool: False
-    compile: True
+    compile: False
+    use_checkpoint: True
 
   image_mode: False
   noise_shape: [1,65,64,64]
   #ema_update_steps: 1
 
+  optimizer:
+    _target_: deepspeed.ops.adam.FusedAdam
+    _partial_: True
+    lr: 1e-4
+    weight_decay: 0.0
+
 trainer:
   gradient_clip_val: 1.0
-  precision: "bf16-mixed"
+  #precision: "bf16-mixed"
   accumulate_grad_batches: 4
   max_epochs: 20
-  strategy: "deepspeed_stage_3_offload"
+  strategy: "deepspeed_stage_3"
+
+flags:
+  use_deepspeed: True

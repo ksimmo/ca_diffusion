@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from deepspeed.runtime.activation_checkpointing import checkpointing
 
-USE_DEEPSPEED = False
+import ca_diffusion.flags as flags
 
 def shape_val(x, y, pos=-1):
     """
@@ -15,7 +15,7 @@ def shape_val(x, y, pos=-1):
 
 def checkpoint(function, use_checkpoint=True, *args, **kwargs):
     if use_checkpoint:
-        if USE_DEEPSPEED: #deepspeed has its own checkpointing
+        if flags.USE_DEEPSPEED: #deepspeed has its own checkpointing
             return checkpointing.checkpoint(function, *args, **kwargs)
         else:
             return torch.utils.checkpoint.checkpoint(function, *args, **kwargs)

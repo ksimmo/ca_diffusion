@@ -3,6 +3,7 @@ defaults:
   - data: neurofinder_image
   - model: unsupervised_ca_image_diffusion
   - trainer: default
+  - flags: default
   - paths: default
   - hydra: default
   - experiment: null

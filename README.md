@@ -3,14 +3,24 @@ Calcium imaging video synthesis using Latent Flow Matching models.
 This repo is currently under construction and serves me for playing around with new stuff.
 
 ## Installation
- - Python 3.12 is recommended
- - Install packages from requirements.txt
+- Python 3.12 is recommended
+- Install packages from requirements.txt
 
- ## Data
- - Run download scripts in scripts/data to setup calcium imaging datasets
+## Data
+- Run download scripts in scripts/data to setup calcium imaging datasets
 
- ## Training
- Run the following command
+## Training
+Run the following command for training
+```sh
+python main.py experiment=<experiment name>
+python main.py experiment=<experiment name> trainer.devices=[id1,id2]
+```
+
+## Results
+
+### Autoencoding
+
+### Unsupervised Clip Sampling
 
 ## Credits
 This code base is inspired and partially borrows code and ideas from the following works. 

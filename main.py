@@ -8,6 +8,7 @@ from lightning.pytorch import Trainer, seed_everything
 import hydra
 from hydra.utils import instantiate
 
+import ca_diffusion.flags as flags
 from ca_diffusion.datamodule import DataModule
 
 @hydra.main(config_path="configs", config_name="train")
@@ -21,6 +22,7 @@ def main(cfg: DictConfig):
 
     seed_everything(cfg.get("seed", 42), workers=True) #set random seed for reproducibility
 
+    flags.init_flags(cfg.flags)
     #instantiate model we want to train
     model = instantiate(OmegaConf.to_container(cfg.model))
 
