@@ -1,7 +1,14 @@
 import torch
 import torch.nn as nn
 
-USE_DEEPSPEED = False
+import deepspeed
+from deepspeed.runtime.zero import GatheredParameters
+from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+
+import ca_diffusion.flags as flags
+
+def z3_params_to_fetch(param_list):
+    return [p for p in param_list if hasattr(p, "ds_id") and p.ds_status==ZeroParamStatus.NOT_AVAILABLE
 
 #TODO take care of DeepSpeed later!!! (clone does not work for deepspeed zero3)
 class EMA(nn.Module):
@@ -21,12 +28,15 @@ class EMA(nn.Module):
         self.model_backup = []
 
     def forward(self, model):
-        #update ema weights
-        for n,p in model.named_parameters():
-            if p.requires_grad:
-                newname = n.replace(".", "")
-                ema_param = self.get_buffer(newname)
-                ema_param.data.copy_(ema_param*self.smoothing_factor + p.data*(1.0-self.smoothing_factor))
+        if not flags.USE_DEEPSPEED:
+            #update ema weights
+            for n,p in model.named_parameters():
+                if p.requires_grad:
+                    newname = n.replace(".", "")
+                    ema_param = self.get_buffer(newname)
+                    ema_param.data.copy_(ema_param*self.smoothing_factor + p.data*(1.0-self.smoothing_factor))
+        else:
+            pass
 
     def save(self, model):
         #save the current model weights so we do not loose them
