@@ -19,6 +19,10 @@ python main.py experiment=<experiment name> trainer.devices=[id1,id2]
 ## Results
 
 ### Autoencoding
+Examplary sample from diffusion autoencoder trained for roughly 70k steps on neurofinder videos.
+(Left: GT mean, Middle left: GT, Middle right: AE prediction, Right: Prediction mean)
+<br>
+<img src="media/autoencoding_example.gif" width=512 height=128/>
 
 ### Unsupervised Clip Sampling
 

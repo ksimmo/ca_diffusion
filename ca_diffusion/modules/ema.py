@@ -7,8 +7,8 @@ from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
 import ca_diffusion.flags as flags
 
-def z3_params_to_fetch(param_list):
-    return [p for p in param_list if hasattr(p, "ds_id") and p.ds_status==ZeroParamStatus.NOT_AVAILABLE
+#def z3_params_to_fetch(param_list):
+#    return [p for p in param_list if hasattr(p, "ds_id") and p.ds_status==ZeroParamStatus.NOT_AVAILABLE
 
 #TODO take care of DeepSpeed later!!! (clone does not work for deepspeed zero3)
 class EMA(nn.Module):

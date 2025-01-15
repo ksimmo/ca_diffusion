@@ -20,7 +20,7 @@ import imageio
 from ca_diffusion.datamodule import DataModule
 from ca_diffusion.tools.plotting_env import initialize_matplotlib
 
-@hydra.main(config_path="../configs", config_name="train")
+@hydra.main(config_path="../../configs", config_name="train")
 def main(cfg: DictConfig):
     OmegaConf.resolve(cfg)
 
