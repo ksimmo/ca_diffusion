@@ -1,0 +1,33 @@
+_target_: ca_diffusion.models.diffusion.LatentDiffusionModel
+
+first_stage:
+  pass #TODO: fill in
+
+model:
+  _target_: ca_diffusion.moules.networks.dit.DiT
+  channels_in: 16
+  channels: 768
+  channels_emb: 1024
+  channels_out: 16
+  depth: 12
+  num_heads: 12
+  qk_norm: True
+  expand: 4
+  dropout: 0.0
+  compile: True
+  use_checkpoint: False
+  channels_freq: 256
+  patch_size: [1,1,1]
+  shape: [17,16,16]
+  num_register_token: 0
+
+diffusor:
+  _target_: ca_diffusion.modules.diffusion.FlowMatching
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: True
+  lr: 1e-4
+  weight_decay: 0.0
+
+latent_data: False

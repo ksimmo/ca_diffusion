@@ -12,13 +12,18 @@ from ca_diffusion.modules.networks.diffusion.utils import TimestepEmbedder
 class DiT(nn.Module):
     def __init__(self, channels_in, channels, channels_emb, channels_out=None, depth=8, num_heads=12, head_channels=None,
                  qk_norm=True, expand=4, dropout=0.0, compile=False, use_checkpoint=False, channels_freq=256,
-                 patch_size=[1,1]):
+                 patch_size=[1,1], shape=(17,16,16), num_register_token=0):
         super().__init__()
 
         channels_out = channels_in if channels_out is None else channels_out
         self.patch_size = patch_size
+        self.num_register_token = num_register_token
+        if self.num_register_token>0:
+            self.register_token = nn.Parameter(torch.randn(1,self.num_register_token,channels)*0.02)
 
         self.timestep_embedder = TimestepEmbedder(channels_freq, channels, learnable=True)
+        patched_shape = [shape[i]//patch_size[i] for i in range(len(patch_size))]
+        self.pos_emb = nn.Parameter(torch.randn(1,int(np.prod(patched_shape))+num_register_token,channels)*0.02) #TODO: currently use learnable position embedding -> change to rotary
 
         self.proj_in = nn.Linear(channels_in*int(np.prod(patch_size)), channels)
 
@@ -47,10 +52,20 @@ class DiT(nn.Module):
 
         x = self.proj_in(x)
 
-        #add position
+        #add register token if necessary
+        if self.num_register_token>0:
+            x = torch.cat([x, self.register_token.repeat(x.size(0),1,1)], dim=1)
+
+        #add position embedding
+        x = x + self.pos_emb
 
         for block in self.blocks:
             x = block(x, emb)
+
+        #remove register token
+        if self.num_register_token>0:
+            x = x[:,:-self.num_register_token,:]
+
         x = self.final_norm(x, emb)
         x = self.proj_out(x)
 

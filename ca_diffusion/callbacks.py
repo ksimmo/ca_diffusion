@@ -167,3 +167,5 @@ class ImageLogger(Callback):
         if not self.disabled and pl_module.global_step > 0 and self.log_val and pl_module.current_epoch%self.log_val_epochs==0:
             self.log_img(pl_module, batch, batch_idx, split="val")
         self.val_steps += 1
+
+#TODO: add video logger (quite similar to image logger just save either mp4 or gif)
