@@ -7,10 +7,11 @@ import torch.nn as nn
 from ca_diffusion.modules.utils import shape_val
 
 class Diffusor(nn.Module):
-    def __init__(self, noise_prior="independent"):
+    def __init__(self, noise_prior="independent", timestep_sampling="linear"):
         super().__init__()
 
         self.noise_prior = noise_prior
+        self.timestep_sampling = timestep_sampling
 
         self.criterion = nn.MSELoss(reduction="none") #TODO: maybe also support L1 here
 
@@ -31,6 +32,20 @@ class Diffusor(nn.Module):
             raise NotImplementedError("Noise prior {} is not supported!".format(self.noise_prior))
 
         return eps
+    
+    def sample_t(self, B, device=None):
+        if self.timestep_sampling=="linear":
+            t = torch.rand((B,), device=device) #uniform sampling of t
+        elif self.timestep_sampling=="logit_sigmoid":
+            t = torch.sigmoid(torch.randn((B,), device=device))
+        elif self.timestep_sampling=="mode":
+            u = torch.randn((B,), device=device)
+            s = 0.81
+            t = 1.0-u-s*(torch.cos(np.pi*0.5*u).pow(2)-1+u)
+        else:
+            raise NotImplementedError("Timestep sampling method {} is not implemented!".format(self.timestep_sampling))
+        
+        return t
 
     @abc.abstractmethod
     def encode(self, x, t, eps=None):
@@ -38,10 +53,9 @@ class Diffusor(nn.Module):
 
 
 class FlowMatching(Diffusor):
-    def __init__(self, sigma_min=0.0, timestep_sampling="linear", noise_prior="independent", learn_logvar=False):
-        super().__init__(noise_prior=noise_prior)
+    def __init__(self, sigma_min=0.0, noise_prior="independent", timestep_sampling="linear", learn_logvar=False):
+        super().__init__(noise_prior=noise_prior, timestep_sampling=timestep_sampling)
 
-        self.timestep_sampling = timestep_sampling
         self.sigma_min = sigma_min
         self.learn_logvar = learn_logvar
 
@@ -53,16 +67,7 @@ class FlowMatching(Diffusor):
     
     def forward(self, model, x, t=None, loss_mask=None, model_args={}, return_data=False):
         if t is None:
-            if self.timestep_sampling=="linear":
-                t = torch.rand((x.size(0),), device=x.device) #uniform sampling of t
-            elif self.timestep_sampling=="logit_sigmoid":
-                t = torch.sigmoid(torch.randn((x.size(0),), device=x.device))
-            elif self.timestep_sampling=="mode":
-                u = torch.randn((x.size(0),), device=x.device)
-                s = 0.81
-                t = 1.0-u-s*(torch.cos(np.pi*0.5*u).pow(2)-1+u)
-            else:
-                raise NotImplementedError("Timestep sampling method {} is not implemented!".format(self.timestep_sampling))
+            t = self.sample_t(x.size(0), x.device)
         xt, eps = self.encode(x, t)
 
         target = eps-(1.0-self.sigma_min)*x
@@ -166,7 +171,7 @@ class LinearSchedule(DDPMSchedule):
 #continous DDPM implementation
 class DDPM(Diffusor):
     def __init__(self, schedule="linear", schedule_args={}, parameterization="eps", timestep_sampling="linear", noise_prior="independent", learn_logvar=False):
-        super().__init__(noise_prior=noise_prior)
+        super().__init__(noise_prior=noise_prior, timestep_sampling=timestep_sampling)
 
         self.timestep_sampling = timestep_sampling
         assert parameterization in ["eps", "x0", "v"]
@@ -187,16 +192,7 @@ class DDPM(Diffusor):
     
     def forward(self, model, x, t=None, loss_mask=None, model_args={}, return_data=False):
         if t is None:
-            if self.timestep_sampling=="linear":
-                t = torch.rand((x.size(0),), device=x.device) #uniform sampling of t
-            elif self.timestep_sampling=="logit_sigmoid":
-                t = torch.sigmoid(torch.randn((x.size(0),), device=x.device))
-            elif self.timestep_sampling=="mode":
-                u = torch.randn((x.size(0),), device=x.device)
-                s = 0.81
-                t = 1.0-u-s*(torch.cos(np.pi*0.5*u).pow(2)-1+u)
-            else:
-                raise NotImplementedError("Timestep sampling method {} is not implemented!".format(self.timestep_sampling))
+            t = self.sample_t(x.size(0), x.device)
         xt, eps, gamma = self.encode(x, t)
 
         if self.parameterization=="eps":

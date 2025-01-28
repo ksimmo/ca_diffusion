@@ -84,7 +84,7 @@ class Autoencoder(pl.LightningModule):
         """
         Initialize weights only from a checkpoint file 
         """
-        sd = torch.load(ckpt_path, map_location="cpu", weights_only=True)["state_dict"]
+        sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)["state_dict"]
         for k in sd.keys():
             for k2 in ignore_keys:
                 if k.startswith(k2):
@@ -94,7 +94,7 @@ class Autoencoder(pl.LightningModule):
         missing, unexpected = self.load_state_dict(sd, strict=False)
         if len(missing)>0:
             print("Missing keys:", missing)
-        if len(unexpected>0):
+        if len(unexpected)>0:
             print("Unexpected keys:", unexpected)
 
     @contextmanager
@@ -161,6 +161,7 @@ class Autoencoder(pl.LightningModule):
                 self.decoder_ema(self.decoder)
 
     def configure_optimizers(self):
+        #TODO: split params in groups with and without weight decay!
         params = list(self.encoder.parameters()) + list(self.decoder.parameters())
         optimizer = self.hparams.optimizer(params=params)
         if self.hparams.scheduler is not None:

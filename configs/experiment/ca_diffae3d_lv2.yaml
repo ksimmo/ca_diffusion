@@ -1,0 +1,56 @@
+# @package _global_
+defaults:
+  - override /data: neurofinder_image
+  - override /model: ca_image_diffusion_ae
+  - override /trainer: default
+
+tag: ca_video_diffusion_ae_lv2
+
+data:
+  train:
+    batch_size: 3
+    num_workers: 3
+    config:
+      crop_size: [128,128,128]
+      fixed_intensity_binning: True
+
+model:
+  encoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.Encoder
+    channels_in: 1
+    channels_z: 24 #16
+    channel_mult: [2,4,4]
+    attn_res: [-1]
+    causal: False
+    learnable_pool: False
+    compile: True
+  decoder:
+    _target_: ca_diffusion.modules.networks.diffusion.unet3d.UNet
+    channels_in: 1
+    channels_injection: 24
+    channel_mult: [2,4,4]
+    attn_res: [-1]
+    injection_res: -1
+    causal: False
+    learnable_pool: False
+    compile: True
+
+  diffusor:
+    timestep_sampling: "logit_sigmoid"
+
+  optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: True
+    lr: 5e-5
+    weight_decay: 0.0
+
+
+  image_mode: False
+  noise_shape: [1,128,128,128]
+  ema_update_steps: 1
+
+trainer:
+  gradient_clip_val: 1.0
+  precision: "bf16"
+  accumulate_grad_batches: 4 #16
+  max_epochs: 100

@@ -1,9 +1,15 @@
+import os
+
 import torch
 import torch.nn as nn
 
 import lightning.pytorch as pl
 
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
+
 from ca_diffusion.tools.utils import disabled_train
+from ca_diffusion.modules.transforms import Transform
 
 #TODO: add EMA
 class DiffusionModel(pl.LightningModule):
@@ -12,11 +18,12 @@ class DiffusionModel(pl.LightningModule):
                  diffusor: nn.Module,
                  optimizer: torch.optim.Optimizer,
                  scheduler: torch.optim.lr_scheduler=None,
-                 data_key: str="image"
+                 data_key: str="image",
+                 ignore_param: list=[]
                  ):
         super().__init__()
 
-        self.save_hyperparameters(ignore=["model", "diffusor"], logger=False) #do net hyperparams to logger
+        self.save_hyperparameters(ignore=["model", "diffusor"]+ignore_param, logger=False) #do not add hyperparams to logger
 
         self.data_key = data_key
 
@@ -25,6 +32,9 @@ class DiffusionModel(pl.LightningModule):
 
     def precompute(self, batch):
         return batch
+
+    def postcompute(self, x):
+        return x
 
     def training_step(self, batch, batch_idx):
         log = {}
@@ -67,8 +77,12 @@ class DiffusionModel(pl.LightningModule):
     
     def log_images(self, batch, **kwargs):
         gt = batch[self.data_key]
-        sample = self.diffusor.sample(self.model, self.diffusor.sample_noise(gt.size()).to(self.device), "euler")
-        sample2 = self.diffusor.sample(self.model, self.diffusor.sample_noise(gt.size()).to(self.device), "euler")
+        batch = self.precompute(batch)
+        noiseshape = batch[self.data_key].size()
+        sample = self.diffusor.sample(self.model, self.diffusor.sample_noise(noiseshape).to(self.device), "euler")
+        sample = self.postcompute(sample)
+        sample2 = self.diffusor.sample(self.model, self.diffusor.sample_noise(noiseshape).to(self.device), "euler")
+        sample2 = self.postcompute(sample2)
 
         log = {}
         log["samples"] = torch.cat([gt.unsqueeze(2), sample.unsqueeze(2), sample2.unsqueeze(2)], dim=2)
@@ -78,19 +92,43 @@ class DiffusionModel(pl.LightningModule):
 
 class LatentDiffusionModel(DiffusionModel):
     def __init__(self,
-                 first_stage: nn.Module,
-                 latent_data: False,        #does our dataloader already return precomputed latents?
+                 first_stage_ckpt: str,
+                 latent_transform_args: dict={},
+                 precomputed_latents: bool=False,        #does our dataloader already return precomputed latents?
                  **kwargs):
-        super().__init__(ignore_param=["first_stage"], **kwargs)
+        super().__init__(**kwargs)
 
-        self.first_stage = first_stage
+        confpath = os.path.join(os.path.dirname(first_stage_ckpt), "..", ".hydra", "config.yaml")
+        conf = OmegaConf.load(confpath).model
+        conf["ckpt_path"] = first_stage_ckpt
+
+        self.first_stage = instantiate(conf)
         self.first_stage.eval()
         self.first_stage.train = disabled_train
-        for param in self.first_stage.required_parameters():
+        for param in self.first_stage.parameters():
             param.requires_grad = False
+
+        self.latent_transform = Transform(**latent_transform_args)
+        self.precomputed_latents = precomputed_latents
 
     def precompute(self, batch):
         #precompute all values here and replace the batch with precomputed values
-        batch[self.data_key] = self.first_stage.encode(batch[self.data_key]).sample()
+        if not self.precomputed_latents:
+            batch[self.data_key] = self.first_stage.encode(batch[self.data_key]).sample()
+        batch[self.data_key] = self.latent_transform.forward(batch[self.data_key])
         return batch
+
+    def postcompute(self, x):
+        x = self.latent_transform.backward(x)
+        return self.first_stage.decode(x)
+    
+    def on_save_checkpoint(self, checkpoint):
+        #TODO: check if this works with deepspeed and FSDP as well!
+        #do not save weights from first stage model in ckpt file
+        todel = []
+        for k in checkpoint["state_dict"].keys():
+            if k.startswith("first_stage"):
+                todel.append(k)
+        for k in todel:    
+            del checkpoint["state_dict"][k]
 

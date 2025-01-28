@@ -1,0 +1,24 @@
+# @package _global_
+defaults:
+  - override /data: neurofinder_image
+  - override /model: ca_latent_diffusion
+  - override /trainer: default
+
+tag: ca_latent_video_diffusion
+
+data:
+  train:
+    batch_size: 4
+    num_workers: 4
+    config:
+      crop_size: [128,128,128]
+      fixed_intensity_binning: True
+
+model:
+  first_stage_ckpt: logs/ca_video_diffusion_ae_lv2/runs/2025-01-26/15-01-17/checkpoints/last.ckpt
+
+trainer:
+  gradient_clip_val: 1.0
+  precision: "bf16"
+  accumulate_grad_batches: 1
+  max_epochs: 100

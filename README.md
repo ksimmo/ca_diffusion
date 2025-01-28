@@ -31,6 +31,8 @@ Future plans involve control of neuron placment through semantic segemenation ma
 - [ ] Continous DDPM
 - [x] QK-Normalization
 - [ ] RoPE
+- [x] Causal 3D AE
+- [ ] Find a more elegant way to config first stage
 
 ## Installation
 - Python 3.12 is recommended
