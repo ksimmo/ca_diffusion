@@ -4,10 +4,10 @@ first_stage_ckpt: ???
 
 model:
   _target_: ca_diffusion.modules.networks.diffusion.dit.DiT
-  channels_in: 16
+  channels_in: 24
   channels: 768
   channels_emb: 1024
-  channels_out: 16
+  channels_out: 24
   depth: 12
   num_heads: 12
   qk_norm: True
@@ -17,7 +17,7 @@ model:
   use_checkpoint: False
   channels_freq: 256
   patch_size: [1,1,1]
-  shape: [17,16,16]
+  shape: [16,16,16]
   num_register_token: 0
 
 diffusor:

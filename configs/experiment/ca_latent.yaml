@@ -16,6 +16,8 @@ data:
 
 model:
   first_stage_ckpt: logs/ca_video_diffusion_ae_lv2/runs/2025-01-26/15-01-17/checkpoints/last.ckpt
+  first_stage_apply_ema: True
+  ema_update_steps: 1
 
 trainer:
   gradient_clip_val: 1.0

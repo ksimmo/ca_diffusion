@@ -21,7 +21,7 @@ class DiT(nn.Module):
         if self.num_register_token>0:
             self.register_token = nn.Parameter(torch.randn(1,self.num_register_token,channels)*0.02)
 
-        self.timestep_embedder = TimestepEmbedder(channels_freq, channels, learnable=True)
+        self.timestep_embedder = TimestepEmbedder(channels_freq, channels_emb, learnable=True)
         patched_shape = [shape[i]//patch_size[i] for i in range(len(patch_size))]
         self.pos_emb = nn.Parameter(torch.randn(1,int(np.prod(patched_shape))+num_register_token,channels)*0.02) #TODO: currently use learnable position embedding -> change to rotary
 
@@ -49,7 +49,7 @@ class DiT(nn.Module):
             H = x.size(3)//self.patch_size[1]
             W = x.size(4)//self.patch_size[2]
             x = rearrange(x, "b c (t i) (h j) (w k) -> b (t h w) (c i j k)", i=self.patch_size[0], j=self.patch_size[1], k=self.patch_size[2])
-
+        
         x = self.proj_in(x)
 
         #add register token if necessary
