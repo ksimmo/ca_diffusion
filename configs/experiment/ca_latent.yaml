@@ -8,8 +8,8 @@ tag: ca_latent_video_diffusion
 
 data:
   train:
-    batch_size: 4
-    num_workers: 4
+    batch_size: 16
+    num_workers: 16
     config:
       crop_size: [128,128,128]
       fixed_intensity_binning: True
@@ -19,8 +19,11 @@ model:
   first_stage_apply_ema: True
   ema_update_steps: 1
 
+  latent_transform_args:
+    scale: 0.44 #std is 2.27
+
 trainer:
   gradient_clip_val: 1.0
   precision: "bf16"
-  accumulate_grad_batches: 1
+  accumulate_grad_batches: 4
   max_epochs: 100

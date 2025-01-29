@@ -53,7 +53,8 @@ def main(ckpt_path: str, deviceid: int=-1):
         param.requires_grad = False
 
     #load calcium imaging video
-    h = h5py.File(os.path.join("data/neurofinder", "00.00", "data", "{}.h5".format("00.00")), "r") #TODO: change fixed path!
+    n = "00.01"
+    h = h5py.File(os.path.join("data/neurofinder", n, "data", "{}.h5".format(n)), "r") #TODO: change fixed path!
     max_intensity = float(h["images"].attrs["max_intensity"])
 
     #load video
@@ -71,14 +72,14 @@ def main(ckpt_path: str, deviceid: int=-1):
     video = (video-0.5)/0.5
 
     print(video.shape)
-    #video = video[:129,:256,:256]
-    video = video[:65, 256:320, 256:320]
+    video = video[:256,256:512, 256:512]
+    #video = video[:65, 256:320, 256:320]
 
     video = torch.FloatTensor(video.copy()).unsqueeze(0).unsqueeze(0).to(device) #we can reuse the T as C axis
 
     with torch.no_grad():
         z = model.encode(video)
-        rec = model.decode(z, torch.randn_like(video))
+        rec = model.decode(z, torch.randn_like(video)).to(torch.float32)
         rec = rec.clamp(-1.0,1.0)
 
     #save reconstruction

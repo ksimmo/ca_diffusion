@@ -52,7 +52,8 @@ python main.py experiment=<experiment name> trainer.devices=[id1,id2]
 ## Results
 
 ### Autoencoding
-Examplary sample from diffusion autoencoder trained for roughly 70k steps on neurofinder videos. Original videos have higher bit depth (.tiff) compared to RGB which may cause artifacts in the presented samples. More samples with longer training will follow ...
+Examplary sample from diffusion autoencoder trained for roughly 80k steps on neurofinder videos. Original videos have higher bit depth (.tiff) compared to RGB which may cause artifacts in the presented samples.
+Autoencoder training is performed on 128x128x128 clips whereas inference can be run on higher resolutions (depending on GPU memory - or tile input). More samples with longer training will follow ...
 (Left: GT mean, Middle left: GT, Middle right: AE prediction, Right: Prediction mean)
 <br>
 <img src="media/autoencoding_example.gif" width=512 height=128/>

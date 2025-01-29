@@ -1,0 +1,34 @@
+# @package _global_
+defaults:
+  - override /data: neurofinder_image
+  - override /model: ca_latent_diffusion
+  - override /trainer: default
+
+tag: ca_latent_video_diffusion2
+
+data:
+  train:
+    batch_size: 5
+    num_workers: 10
+    config:
+      crop_size: [256,256,256]
+      fixed_intensity_binning: True
+
+model:
+  model:
+    patch_size: [2,2,2]
+    shape: [32,32,32]
+
+  noise_shape: [32,32,32]
+  first_stage_ckpt: logs/ca_video_diffusion_ae_lv2/runs/2025-01-26/15-01-17/checkpoints/last.ckpt
+  first_stage_apply_ema: True
+  ema_update_steps: 1
+
+  latent_transform_args:
+    scale: 0.44 #std is 2.27
+
+trainer:
+  gradient_clip_val: 1.0
+  precision: "bf16"
+  accumulate_grad_batches: 4
+  max_epochs: 100
