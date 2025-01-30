@@ -12,6 +12,7 @@ from hydra.utils import instantiate
 from ca_diffusion.tools.utils import disabled_train
 from ca_diffusion.modules.ema import EMA
 from ca_diffusion.modules.transforms import Transform
+from ca_diffusion.models.autoencoder import GaussianDistribution
 
 #TODO: add EMA
 class DiffusionModel(pl.LightningModule):
@@ -129,6 +130,15 @@ class DiffusionModel(pl.LightningModule):
                                                              "frequency": 1}}
         return {"optimizer": optimizer}
 
+
+    def sample(self, noise=None, bs=1):
+        if noise is None:
+            noise = self.diffusor.sample_noise([bs,24]+list(self.noise_shape)).to(self.device) #meh i got the config wrong here
+        sample = self.diffusor.sample(self.model, noise, "euler")
+        sample = self.postcompute(sample)
+
+        return sample
+
     
     def log_images(self, batch, **kwargs):
         gt = batch[self.data_key]
@@ -183,11 +193,12 @@ class LatentDiffusionModel(DiffusionModel):
 
     def postcompute(self, x):
         x = self.latent_transform.backward(x)
+        x = GaussianDistribution(x, deterministic=True)
         if hasattr(self.first_stage, "ema_scope") and self.first_stage_apply_ema:
             with model.ema_scope():
                 x = self.first_stage.decode(x)
         else:
-            self.first_stage.decode(x)
+            x = self.first_stage.decode(x)
         return x
     
     def on_save_checkpoint(self, checkpoint):
