@@ -58,7 +58,10 @@ Autoencoder training is performed on 128x128x128 clips whereas inference can be 
 <br>
 <img src="media/autoencoding_example.gif" width=512 height=128/>
 
-### Unsupervised Clip Sampling
+### Unconditional Clip Sampling
+A few unconditional examples drawn from the latent video transformer around 7k steps:
+<br>
+<img src="media/unconditional_sample.gif" width=776 height=260/>
 
 ## Credits
 This code base is inspired and partially borrows code and ideas from the following works. 
