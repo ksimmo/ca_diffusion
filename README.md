@@ -12,26 +12,28 @@ To follow this approach this repository implements a convolution based diffusion
 causal 3D-UNet based diffusion model as condition to achieve reconstruction of the underlying tissue structure but with different noise.
 Convolutional networks are choosen due to the small size of neurons which only require a small receptive field.
 In the future I may also experiment with having a further global conditioning which is taken from a different view of the same video to disentangle structure and global noise and intensity parameters.
-By training a second diffusion model on the latent representation space generation of new underlying structures can be achieved (currently in progress).
+By training a second diffusion model on the latent representation space, generation of new underlying structures can be achieved (currently in progress).
 The architectural design of the second stage is build up on diffusion transformers (DiTs).
 
 Future plans involve control of neuron placment through semantic segemenation maps and experimenting with different learning strategies (for instance MAEs, metric learning, ...) on calcium imaging data.
 
 ## Features/ToDo 
 - [x] Configure Lightning through Hydra
+- [x] General dataloader for torch/webdataset/indexed webdatasets
+- [ ] Adding support for FFCV, DeepLake
 - [x] EMA
 - [ ] Deepspeed EMA
 - [x] Checkpointing 
 - [x] Deepspeed checkpointing
 - [ ] Try FSDP
 - [ ] Profile to find best torch.compile placement
-- [ ] Video logger
-- [x] General dataloader for torch/webdataset/indexed webdatasets
 - [x] Flow Matching
 - [ ] Continous DDPM
 - [x] QK-Normalization
 - [ ] RoPE
 - [x] Causal 3D AE
+- [ ] Magnitude preserving layers & architecture (EDM-2)
+- [ ] Video logger
 - [ ] Find a more elegant way to config first stage
 
 ## Installation

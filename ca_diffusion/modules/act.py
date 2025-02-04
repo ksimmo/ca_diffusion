@@ -19,3 +19,11 @@ class SwiGLU(nn.Module):
     def forward(self, x):
         x, gate = self.proj(x).chunk(2, dim=-1)
         return x * F.silu(gate)
+
+#Magnitude preserving SilU (EDM-2)
+class MP_SiLU(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return F.silu(x)/0.596
