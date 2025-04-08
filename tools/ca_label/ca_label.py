@@ -2,7 +2,7 @@ import sys
 #import signal
 from PyQt6 import QtWidgets
 
-from src.gui.mainwindow import MainWindow
+from src.mainwindow import MainWindow
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)

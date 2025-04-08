@@ -12,122 +12,410 @@ from PyQt6.QtCore import *
 from PyQt6 import uic
 
 import numpy as np
+from skimage.transform import resize
+
+from src.ca_worker import CalciumWorker
 
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    worker_load = pyqtSignal(str, int)
+    worker_unload = pyqtSignal()
+    worker_pre_process = pyqtSignal()
+    worker_process_save = pyqtSignal(str)
+    worker_process_load = pyqtSignal(str)
+    request_frame = pyqtSignal(str, int)
+    measure_mask = pyqtSignal(np.ndarray, int, int)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         uic.loadUi("src/mainwindow.ui", self)
 
-        #self.main_thread = MainThread(None)
-        #self.main_thread.start()
-
-
         #setup widgets
-        self.ui_label_video.linkSliders(self.ui_slider_shiftx, self.ui_slider_shifty, self.ui_slider_zoom, control_sliders=True)
-        self.ui_label_flow.linkSliders(self.ui_slider_shiftx, self.ui_slider_shifty, self.ui_slider_zoom)
-        self.ui_label_flow.poke_color = np.array([0,0,0], dtype=np.uint8)
-
         self.ui_slider_t.setRange(0,0)
+        self.ui_slider_t.setEnabled(False)
         self.ui_slider_shiftx.setEnabled(False)
         self.ui_slider_shifty.setEnabled(False)
         self.ui_slider_zoom.setEnabled(False)
+        self.ui_button_measure_run.setEnabled(False)
+        self.ui_button_measure_clear.setEnabled(False)
+
+        self.ui_combo_mode.addItem("Frame")
+        self.ui_combo_mode.addItem("Mean")
+        self.ui_combo_mode.addItem("Median")
+        self.ui_combo_mode.addItem("Std")
+        self.ui_combo_mode.addItem("Max.")
+        self.ui_combo_mode.addItem("Max. Correlation")
+
+        self.ui_combo_masks.clear()
+        self.ui_combo_masks.addItem("None")
+
+        #start ca worker
+        self.ca_worker = CalciumWorker()
+        self.ca_thread = QThread()
+        self.ca_worker.moveToThread(self.ca_thread)
+        self.ca_thread.start()
+
 
         #register callbacks
         self.ui_button_vselect.clicked.connect(self.OnVideoButtonSelect)
         self.ui_button_vload.clicked.connect(self.OnVideoButtonLoad)
+        self.worker_load.connect(self.ca_worker.load_video)
+        self.ca_worker.video_loaded.connect(self.OnVideoLoaded)
         self.ui_button_vunload.clicked.connect(self.OnVideoButtonUnload)
+        self.worker_unload.connect(self.ca_worker.unload_video)
 
-        self.ui_button_mselect.clicked.connect(self.OnPokeButtonSelect)
-        self.ui_button_msave.clicked.connect(self.OnPokeButtonSave)
-        self.ui_button_mload.clicked.connect(self.OnPokeButtonLoad)
-        self.ui_button_mclear.clicked.connect(self.OnPokeButtonClear)
-        self.ui_button_mclear_all.clicked.connect(self.OnPokeButtonClearAll)
+        self.ui_button_mselect.clicked.connect(self.OnMaskButtonSelect)
+        self.ui_button_msave.clicked.connect(self.OnMaskButtonSave)
+        self.ui_button_mload.clicked.connect(self.OnMaskButtonLoad)
 
-        self.ui_button_mask_add.clicked.connect(self.OnPokeButtonAdd)
-        self.ui_button_mask_delete.clicked.connect(self.OnPokeButtonDelete)
+        self.ui_combo_masks.currentIndexChanged.connect(self.OnMaskSelect)
+        self.ui_button_mask_add.clicked.connect(self.OnMaskButtonAdd)
+        self.ui_button_mask_delete.clicked.connect(self.OnMaskButtonDelete)
+        self.ui_button_mask_delete_all.clicked.connect(self.OnMaskButtonDeleteAll)
+        self.ui_button_mask_focus.clicked.connect(self.OnMaskButtonFocus)
 
-        self.ui_button_calc.clicked.connect(self.OnVideoCalculate)
+        self.ui_button_pre_process.clicked.connect(self.OnPreProcessData)
+        self.worker_pre_process.connect(self.ca_worker.pre_process_data)
+        self.ca_worker.pre_process_finished.connect(self.OnPreProcessFinished)
+        self.ca_worker.progress_update.connect(self.OnProgressUpdate)
+        self.ui_button_psave.clicked.connect(self.OnProcessButtonSave)
+        self.worker_process_save.connect(self.ca_worker.save_processed)
+        self.ui_button_pload.clicked.connect(self.OnProcessButtonLoad)
+        self.worker_process_load.connect(self.ca_worker.load_processed)
+
+        self.ui_combo_mode.currentIndexChanged.connect(self.OnModeSelect)
+        self.ui_slider_mask_alpha.sliderReleased.connect(self.updateView)
         self.ui_button_prev_t.clicked.connect(self.OnPrevFrame)
         self.ui_button_next_t.clicked.connect(self.OnNextFrame)
         self.ui_button_set_t.clicked.connect(self.OnSetFrame)
         self.ui_slider_t.sliderReleased.connect(self.OnSliderT)
+        self.request_frame.connect(self.ca_worker.request_frame)
+        self.ca_worker.transfer_frame.connect(self.OnReceiveFrame)
+        self.ui_button_int_clip.clicked.connect(self.OnIntClip)
 
-        self.ui_label_video.moved.connect(self.OnMouseMove)
-        self.ui_label_flow.moved.connect(self.OnMouseMove)
-        self.ui_label_video.clicked.connect(self.OnMouseClicked)
-        #self.ui_label_video.clicked.connect(self.ui_label_flow.changePokes)
-        self.ui_label_flow.clicked.connect(self.OnMouseClicked)
-        #self.ui_label_flow.clicked.connect(self.ui_label_video.changePokes)
+        self.ui_slider_shiftx.sliderReleased.connect(self.updateView)
+        self.ui_slider_shifty.sliderReleased.connect(self.updateView)
+        self.ui_slider_zoom.sliderReleased.connect(self.OnSliderZoom)
+
+        self.ui_label_view.moved.connect(self.OnViewMouseMove)
+        self.ui_label_view.clicked.connect(self.OnViewMouseClicked)
+
+
+        self.ui_button_measure_run.clicked.connect(self.OnMeasureButtonRun)
+        self.measure_mask.connect(self.ca_worker.request_track)
+        self.ui_button_measure_clear.clicked.connect(self.OnMeasureButtonClear)
+
 
         #stuff for handling video
-        self.video_metadata = None
-        self.video = None
+        self.is_video_loaded = False
+        self.video_metadata = {}
         self.current_frame_index = 0
         self.masks = []
+        self.current_mask_index = -1 #no mask selected
 
-        #current frame display
-        self.pixmap = QPixmap()
-        self.clickable = True
-        self.default_zoom = 2.0
+        #main display helpers
+        self.default_zoom = 2.0 #keep this constant for now!
         self.zoom_factor = 1.0 #the current zoom factor
         self.inuse = False
+        self.pixmap_view = QPixmap()
+        self.image_view = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8)
+        self.image_view_contrast = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8) #perform contrast calculations on here!
 
-    def updateCanvas(self):
-        img = self.image.astype(np.uint8)
+    #override
+    def closeEvent(self, event):
+        #close stuff here
+        #####
+        QtWidgets.QMainWindow.closeEvent(self, event)
 
-        for i in range(len(self.pokes)):
-            img[int(self.pokes[i][1]), int(self.pokes[i][0])] = self.poke_color #image has y first and then x
+    #video loading
+    def OnVideoButtonSelect(self):
+        fname = QFileDialog.getOpenFileName(self, "Open file", "", "All files (*);;Tiff (*.tiff);;H5 (*.h5)")
+        self.ui_edit_vpath.setText(fname[0])
 
-        val = 1.0
-        if self.slider_zoom is not None:
-            val = self.slider_zoom.value()
+    def OnVideoButtonLoad(self):
+        self.OnVideoButtonUnload() #make sure everything is unloaded before
+        path = self.ui_edit_vpath.text()
+
+        max_frames = self.ui_edit_max_frames.text()
+        if len(max_frames)>0:
+            if not max_frames.isnumeric():
+                print("Number of frames is not numeric!")
+                return
+            max_frames = int(max_frames)
+            if max_frames<0:
+                max_frames = -1
+            elif max_frames==0:
+                print("You cannot load 0 frames!")
+                return
+        else:
+            max_frames = -1
+
+        self.worker_load.emit(path, max_frames)
+
+    def OnVideoButtonUnload(self):
+        self.worker_unload.emit()
+
+        self.is_video_loaded = False
+        self.video_metadata = {}
+        self.current_frame_index = 0
+        self.masks = []
+        self.current_mask_index = -1
+        self.zoom_factor = 1.0
+        self.inuse = False
+
+        #reset and disable widgets
+        self.ui_edit_t.blockSignals(True)
+        self.ui_edit_t.setText("0")
+        self.ui_edit_t.blockSignals(False)
+        self.ui_button_set_t.setEnabled(False)
+        self.ui_button_prev_t.setEnabled(False)
+        self.ui_button_next_t.setEnabled(False)
+
+        self.ui_slider_t.blockSignals(True)
+        self.ui_slider_t.setValue(0)
+        self.ui_slider_t.setRange(0,0)
+        self.ui_slider_t.blockSignals(False)
+        self.ui_slider_t.setEnabled(False)
+
+        self.ui_slider_shiftx.blockSignals(True)
+        self.ui_slider_shiftx.setValue(0)
+        self.ui_slider_shiftx.setRange(0,0)
+        self.ui_slider_shiftx.blockSignals(False)
+        self.ui_slider_shiftx.setEnabled(False)
+
+        self.ui_slider_shifty.blockSignals(True)
+        self.ui_slider_shifty.setValue(0)
+        self.ui_slider_shifty.setRange(0,0)
+        self.ui_slider_shifty.blockSignals(False)
+        self.ui_slider_shifty.setEnabled(False)
+
+        self.ui_slider_zoom.blockSignals(True)
+        self.ui_slider_zoom.setValue(1)
+        self.ui_slider_zoom.blockSignals(False)
+        self.ui_slider_zoom.setEnabled(False)
+
+        self.ui_combo_mode.blockSignals(True)
+        self.ui_combo_mode.setCurrentIndex(0) #default mode is frame
+        self.ui_combo_mode.blockSignals(False)
+        self.ui_combo_mode.setEnabled(False)
+
+        self.ui_label_view.clear()
+        self.image_view = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8)
+        self.image_view_contrast = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8)
+        self.ui_label_signal.clear()
+
+        self.ui_button_pre_process.setEnabled(True)
+
+        self.ui_label_value2.setText("0")
+        self.ui_label_pos.setText("[PosX,PosY]")
+
+        self.ui_edit_int_low.setText("")
+        self.ui_edit_int_high.setText("")
+        self.ui_button_int_clip.setEnabled(False)
+
+        self.ui_button_measure_run.setEnabled(False)
+        self.ui_button_measure_clear.setEnabled(False)
+
+        print("Current Video Unloaded")
+
+    def OnVideoLoaded(self, num_frames: int, frame0: np.ndarray):
+        """
+        Our video worker has loaded the video
+        """
+        self.video_metadata["num_frames"] = num_frames
+        self.is_video_loaded = True
+        self.image_view = frame0
+        self.OnIntClip()
+
+        #re-enable sliders
+        self.ui_slider_shiftx.setEnabled(True)
+        self.ui_slider_shifty.setEnabled(True)
+        self.ui_slider_t.blockSignals(True)
+        self.ui_slider_t.setRange(0,num_frames-1)
+        self.ui_slider_t.blockSignals(False)
+        self.ui_slider_t.setEnabled(True)
+        self.ui_slider_zoom.setEnabled(True)
+
+        self.ui_button_set_t.setEnabled(True)
+        self.ui_button_prev_t.setEnabled(True)
+        self.ui_button_next_t.setEnabled(True)
+
+        self.ui_button_int_clip.setEnabled(True)
+
+        self.ui_button_measure_run.setEnabled(True)
+        self.ui_button_measure_clear.setEnabled(True)
+
+        print("Successfully loaded video!", num_frames)
+
+    #################
+    #mask loading/saving
+    def OnMaskButtonSelect(self):
+        fname = QFileDialog.getOpenFileName(self, "Open file", "", "JSON (*.json);;All files (*)")
+        self.ui_edit_mpath.setText(fname[0])
+
+    def OnMaskButtonSave(self):
+        path = self.ui_edit_mpath.text()
+
+        if not path.endswith(".json"):
+            print("File for saving masks needs to be a JSON (.json) file!")
+            return
+
+        #write mask to file
+        try:
+            f = open(path, "w")
+            masks = []
+            for m in self.masks:
+                masks.append({"id": m["id"], "coordinates": m.tolist()})
+            json.dump(masks, f)
+            f.close()
+            print("Successfully saved masks to {}".format(path))
+        except Exception as e:
+            print("Failed saving masks to {}".format(path))
+            print(e)
+
+    def OnMaskButtonLoad(self):
+        path = self.ui_edit_mpath.text()
+
+        if not path.endswith(".json"):
+            print("File for loading masks needs to be a JSON (.json) file!")
+            return
+
+        #load masks from file
+        try:
+            f = open(path, "r")
+            self.masks = json.load(f)
+            for m in self.masks:
+                m["coordinates"] = np.array(m["coordinates"])
+            f.close()
+
+            self.ui_combo_masks.clear()
+            self.ui_combo_masks.addItem("None")
+            for m in self.masks:
+                self.ui_combo_masks.addItem("ID: {}".format(m["id"]))
+
+            print("Successfully loaded masks from {}".format(path))
+
+
+        except Exception as e:
+            print("Failed loading masks from {}".format(path))
+            print(e)
+            
+            #reset masks
+            self.masks = []
+
+        self.updateView()
+
+    def OnMaskSelect(self):
+        if self.ui_combo_masks.count()>1: #1 is just None mask
+            index = self.ui_combo_masks.currentIndex()
+            self.current_mask_index = index-1
+
+            self.updateView()
+
+    def OnMaskButtonAdd(self):
+        ids = []
+        for m in self.masks:
+            ids.append(m["id"])
+
+        #add mask with non existing id
+        counter = 0
+        while "{}".format(counter) in ids:
+            counter +=1
+        
+        newmask = {"id": "{}".format(counter), "coordinates": np.zeros((0,2), dtype=int)}
+        self.masks.append(newmask)
+        self.ui_combo_masks.blockSignals(True)
+        self.ui_combo_masks.addItem("ID: {}".format(newmask["id"]))
+        self.ui_combo_masks.setCurrentIndex(len(self.masks))
+        self.ui_combo_masks.blockSignals(False)
+
+        self.current_mask_index = len(self.masks)-1
+
+        self.updateView()
+
+    def OnMaskButtonDelete(self):
+        if self.ui_combo_masks.count()>1: #first entry is just None mask
+            index = self.ui_combo_masks.currentIndex()
+            if index>0: #cannot remove None mask
+                self.ui_combo_masks.removeItem(index)
+                del self.masks[index-1]
+
+                #chose no current active mask
+                self.ui_combo_masks.blockSignals(True)
+                self.ui_combo_masks.setCurrentIndex(0)
+                self.ui_combo_masks.blockSignals(False)
+                self.current_mask_index = -1
+
+                self.updateView()
+
+    def OnMaskButtonDeleteAll(self):
+        print("Deleting all masks!")
+        self.masks = []
+        self.ui_combo_masks.clear()
+        self.ui_combo_masks.addItem("None")
+        self.current_mask_index = -1
+
+        self.updateView()
+
+    def OnMaskButtonFocus(self):
+        if self.current_mask_index>=0:
+            coordinates = self.masks[self.current_mask_index]["coordinates"]
+            mins = np.amin(coordinates, axis=0)
+            maxs = np.amax(coordinates, axis=0)+1
+
+            center = (mins+maxs)*0.5
+
+            #TODO: adjust slidersx and y such that current mask pops up in current view
+            val = self.ui_slider_zoom.value()
+            fac = int(self.default_zoom*val)
+
+            self.ui_slider_shiftx.blockSignals(True)
+            self.ui_slider_shiftx.setValue(0) #...
+            self.ui_slider_shiftx.blockSignals(False)
+
+            self.ui_slider_shifty.blockSignals(True)
+            self.ui_slider_shifty.setValue(0) #...
+            self.ui_slider_shifty.blockSignals(False)
+
+            self.updateView()
+
+    #################
+    def updateView(self):
+        img = np.expand_dims(np.copy(self.image_view_contrast), -1)
+        img = np.repeat(img, 3, axis=-1)
+
+        #normalize intensity such that it fits [0,255]
+        amax = np.amax(img)
+        img = img/amax*255.0
+
+        #draw masks
+        img2 = np.copy(img)
+        #directly draw onto image
+        for i,m in enumerate(self.masks):
+            if len(m["coordinates"])==0:
+                continue
+            if i==self.current_mask_index:
+                img2[m["coordinates"][:,0], m["coordinates"][:,1]] = np.array([255.0,0,0])
+            else:
+                img2[m["coordinates"][:,0], m["coordinates"][:,1]] = np.array([0,255.0,0])
+
+        alpha = self.ui_slider_mask_alpha.value()/100.0
+
+        img = img2*alpha+(1.0-alpha)*img #blend masks in
+        
+
+        val = self.ui_slider_zoom.value()
         fac = int(self.default_zoom*val)
 
-        if self.inuse:
-            #ok select correct region
-            shiftx = 0
-            if self.slider_shiftx is not None:
-                shiftx = int(self.slider_shiftx.value())
+        #ok select correct region
+        shiftx = int(self.ui_slider_shiftx.value())
+        shifty = int(self.ui_slider_shifty.value())
 
-            shifty = 0
-            if self.slider_shifty is not None:
-                shifty = int(self.slider_shifty.value())
-
-            img = img[shifty:shifty+1024//fac, shiftx:shiftx+1024//fac]
+        img = img[shifty:shifty+1024//fac, shiftx:shiftx+1024//fac]
 
         #resize image
         img = resize(img, (img.shape[0]*fac, img.shape[1]*fac), order=0, preserve_range=True, anti_aliasing=False)
-
-        #draw arrow
-        img = Image.fromarray(img)
-        draw = ImageDraw.Draw(img)
-        col = "#{:02x}{:02x}{:02x}".format(*self.poke_color)
-        for i in range(len(self.pokes)):
-            startx = int(self.pokes[i][0]*fac)
-            starty = int(self.pokes[i][1]*fac)
-            endx = int(self.pokes[i][2]*fac)
-            endy = int(self.pokes[i][3]*fac)
-
-            draw.line(((startx, starty), (endx, endy)), width=self.arrow_lw, fill=col)
-
-            v = np.array([endx-startx, endy-starty])
-            vlength = np.sqrt(np.sum(v**2))
-            if vlength==0:
-                continue
-
-            arrow_head_height = min(vlength*0.2, 4) #arrow head height is at max 4 pixels
-            arrow_head_intersect = -v/vlength*arrow_head_height+np.array([endx,endy])
-
-            #find perpendicular vector
-            normal = np.array([-v[1], v[0]])
-            normal_length = np.sqrt(np.sum(normal**2))
-
-            p1 = (arrow_head_intersect+normal/normal_length*arrow_head_height).astype(int)
-            p2 = (arrow_head_intersect-normal/normal_length*arrow_head_height).astype(int)
-            
-            draw.polygon([(p1[0],p1[1]),(p2[0], p2[1]), (endx, endy)], fill=col) #draw arrow head
 
         img = np.array(img)
 
@@ -142,361 +430,127 @@ class MainWindow(QtWidgets.QMainWindow):
 
         #draw new image onto label
         img = QImage(img.astype(np.uint8), img.shape[1], img.shape[0], 3*img.shape[1], QImage.Format.Format_RGB888)
-        self.pixmap = self.pixmap.fromImage(img)
-        QLabel.setPixmap(self, self.pixmap)
-
-    
-    def mouseMoveEvent(self, ev: QMouseEvent):
-        if self.inuse:
-            #convert positions to pixels first
-            val = 1.0
-            if self.slider_zoom is not None:
-                val = self.slider_zoom.value()
-            fac = int(self.default_zoom*val)
-
-            shiftx = 0
-            if self.slider_shiftx is not None:
-                shiftx = int(self.slider_shiftx.value())
-
-            shifty = 0
-            if self.slider_shifty is not None:
-                shifty = int(self.slider_shifty.value())
-
-            pos = ev.position()
-            x = int(pos.x()/fac)+shiftx
-            y = int(pos.y()/fac)+shifty
-            self.moved.emit(x, y) #convert to shifted coordinates
-
-    def mousePressEvent(self, ev: QMouseEvent):
-        if self.inuse:
-            #convert positions to pixels first
-            val = 1.0
-            if self.slider_zoom is not None:
-                val = self.slider_zoom.value()
-            fac = int(self.default_zoom*val)
-
-            shiftx = 0
-            if self.slider_shiftx is not None:
-                shiftx = int(self.slider_shiftx.value())
-
-            shifty = 0
-            if self.slider_shifty is not None:
-                shifty = int(self.slider_shifty.value())
-
-            pos = ev.position()
-            x = int(pos.x()/fac)+shiftx
-            y = int(pos.y()/fac)+shifty
-
-            action = ev.button() #left click=1, right click=2
-            if action==Qt.MouseButton.LeftButton: #set annotation
-                action = 1
-            elif action==Qt.MouseButton.RightButton: #remove annotation
-                action = 0
-            else:
-                action = 0
-
-            #check if we are inside the image
-            if self.clickable and x<self.image.shape[1] and y<self.image.shape[0]:
-                self.clicked.emit(x, y, action)
+        self.pixmap_view = self.pixmap_view.fromImage(img)
+        self.ui_label_view.setPixmap(self.pixmap_view)
 
     def OnSliderZoom(self):
-        val = 1.0
-        if self.slider_zoom is not None:
-            val = self.slider_zoom.value()
+        val = self.ui_slider_zoom.value()
         fac = int(self.default_zoom*val)
 
-        shape = np.array(self.image.shape[:2])*fac
+        shape = np.array(self.image_view.shape[:2])*fac
         leftover = shape-1024
 
         #we only allow shifting of original pixels
         leftover = leftover//fac
 
         #set offset slider range
-        if self.slider_shiftx is not None:
-            if self.control_sliders and leftover[1]>0:
-                shiftx = self.slider_shiftx.value()
-                self.slider_shiftx.blockSignals(True)
-                self.slider_shiftx.setRange(0,int(leftover[1]))
-                #TODO: adapt shift slider to new zoom
-                self.slider_shiftx.setValue(0)
-                self.slider_shiftx.blockSignals(False)
-                self.slider_shiftx.setEnabled(True)
-            elif self.control_sliders and leftover[1]<=0:
-                self.slider_shiftx.setEnabled(False)
-        if self.slider_shifty is not None:
-            if self.control_sliders and leftover[0]>0:
-                shifty = self.slider_shifty.value()
-                self.slider_shifty.blockSignals(True)
-                self.slider_shifty.setRange(0,int(leftover[0]))
-                #TODO: adapt shift slider to new zoom
-                self.slider_shifty.setValue(0) #sliders are not updated! why???
-                self.slider_shifty.blockSignals(False)
-                self.slider_shifty.setEnabled(True)
-            elif self.control_sliders and leftover[0]<=0:
-                self.slider_shifty.setEnabled(False)
+        #sliderx
+        if leftover[1]>0:
+            #TODO: rembember old position before zoom
+            shiftx = self.ui_slider_shiftx.value()
+            self.ui_slider_shiftx.blockSignals(True)
+            self.ui_slider_shiftx.setRange(0,int(leftover[1]))
+            self.ui_slider_shiftx.setValue(0)
+            self.ui_slider_shiftx.blockSignals(False)
+            self.ui_slider_shiftx.setEnabled(True)
+        elif leftover[1]<=0:
+            self.ui_slider_shiftx.setEnabled(False)
 
-        self.updateCanvas()
+        #slidery
+        if leftover[0]>0:
+            #TODO: rembember old position before zoom
+            shifty = self.ui_slider_shifty.value()
+            self.ui_slider_shifty.blockSignals(True)
+            self.ui_slider_shifty.setRange(0,int(leftover[0]))
+            self.ui_slider_shifty.setValue(0) #sliders are not updated! why???
+            self.ui_slider_shifty.blockSignals(False)
+            self.ui_slider_shifty.setEnabled(True)
+        elif leftover[0]<=0:
+            self.ui_slider_shifty.setEnabled(False)
 
-
-    #override
-    def closeEvent(self, event):
-        #close stuff here
-        #####
-        QtWidgets.QMainWindow.closeEvent(self, event)
-
-    #video loading
-    def OnVideoButtonSelect(self):
-        fname = QFileDialog.getOpenFileName(self, "Open file", "", "MP4 (*.mp4);;GIF (*.gif);;All files (*)")
-        self.ui_edit_vpath.setText(fname[0])
-
-    def OnVideoButtonLoad(self):
-        self.OnVideoButtonUnload() #make sure everything is unloaded before
-        path = self.ui_edit_vpath.text()
-
-        if os.path.exists(path):
-            try:
-                self.log("Loading video from {} ...".format(path))
-                #vr = decord.VideoReader(path)
-                #num_frames = len(vr)
-                #fps = vr.get_avg_fps()
-                vr = VideoReader(path, "video")
-                self.video_metadata = deepcopy(vr.get_metadata()["video"])
-
-                frames = []
-                for frame in vr:
-                    frames.append(frame['data'])
-                self.video = torch.stack(frames)
-                self.video_metadata["num_frames"] = self.video.size(0)
-                self.video_metadata["fps"] = self.video_metadata["fps"][0] 
-                print(self.video_metadata)
-                #vd = VideoDecoder(path)
-                #self.video_metadata = deepcopy(vd.metadata)
-                self.log("Video info: num_frames={} | fps={:.1f} H={} W={}".format(self.video_metadata["num_frames"], self.video_metadata["fps"], 
-                                                                                   self.video.size(-2), self.video.size(-1)))
-                del vr
-
-                #add pokes
-                for i in range(self.video_metadata["num_frames"]-1): #last frame does not have a flow to pick pokes from
-                    self.pokes.append([]) #add an empty set pokes per frame
-
-                self.ui_button_set_t.setEnabled(True)
-                self.ui_button_next_t.setEnabled(True)
-                self.ui_slider_t.setRange(0,self.video_metadata["num_frames"]-2) #last frame has no poke and indices start from 0
-                #TODO: set slider t to 0
-                self.ui_slider_t.setEnabled(True)
-                self.ui_slider_zoom.setEnabled(True)
-                self.SetCurrentFrame()
-
-            except Exception as e:
-                self.log("Cannot load video!", 1)
-                print(e)
-
-                self.video = None
-                self.video_metadata = None
-        else:
-            self.log("Video {} does not exists!".format(path), 1)
-
-    def OnVideoButtonUnload(self):
-        self.video_metadata = None
-        self.video = None
-        self.current_frame_index = 0
-        self.flow = None
-        self.pokes = []
-
-        #reset widgets
-
-        self.ui_edit_t.blockSignals(True)
-        self.ui_edit_t.setText("0")
-        self.ui_edit_t.blockSignals(False)
-        self.ui_button_set_t.setEnabled(False)
-        self.ui_button_next_t.setEnabled(False)
-
-        self.ui_slider_t.blockSignals(True)
-        self.ui_slider_t.setValue(0)
-        self.ui_slider_t.setRange(0,0)
-        self.ui_slider_t.blockSignals(False)
-        self.ui_slider_t.setEnabled(False)
-
-        self.ui_slider_shiftx.blockSignals(True)
-        self.ui_slider_shiftx.setValue(0)
-        self.ui_slider_shiftx.setRange(0,0)
-        self.ui_slider_shiftx.blockSignals(False)
-        #disabling is done via pixelmap
-
-        self.ui_slider_shifty.blockSignals(True)
-        self.ui_slider_shifty.setValue(0)
-        self.ui_slider_shifty.setRange(0,0)
-        self.ui_slider_shifty.blockSignals(False)
-        #disabling is done via pixelmap
-
-        self.ui_slider_zoom.blockSignals(True)
-        self.ui_slider_zoom.setValue(1)
-        self.ui_slider_zoom.blockSignals(False)
-        self.ui_slider_zoom.setEnabled(False)
-
-        self.ui_label_video.empty()
-        self.ui_label_flow.empty()
-
-        self.ui_combo_poke.clear()
-        self.ui_edit_poke1.setText("")
-        self.ui_edit_poke2.setText("")
-
-        self.ui_label_flowmag.setText("0")
-        self.ui_label_pos.setText("[PosX,PosY]")
-
-        self.log("Current video unloaded!")
+        self.updateView()
 
 
-    #poke loading/saving
-    def OnPokeButtonSelect(self):
-        fname = QFileDialog.getOpenFileName(self, "Open file", "", "JSON (*.json);;All files (*)")
-        self.ui_edit_ppath.setText(fname[0])
+    def OnPreProcessData(self):
+        if self.is_video_loaded:
+            self.ui_button_pre_process.setEnabled(False)
+            self.worker_pre_process.emit()
 
-    def OnPokeButtonSave(self):
+    def OnPreProcessFinished(self):
+        self.ui_button_pre_process.setEnabled(True)
+        self.ui_combo_mode.setEnabled(True)
+
+    def OnProgressUpdate(self, value: int):
+        self.ui_progress.setValue(value)
+
+    def OnProcessButtonSave(self):
         path = self.ui_edit_ppath.text()
+        self.worker_process_save.emit(path)
 
-        if not path.endswith(".json"):
-            self.log("File for saving pokes needs to be a JSON (.json) file!", 1)
-            return
-
-        #write pokes to file
-        try:
-            f = open(path, "w")
-            pokes = []
-            for i in range(len(self.pokes)):
-                pokes.append([])
-                for j in range(len(self.pokes[i])):
-                    pokes[i].append(self.pokes[i][j].tolist())
-            json.dump(pokes, f)
-            f.close()
-            self.log("Successfully saved pokes to {}".format(path))
-        except Exception as e:
-            self.log("Failed saving pokes to {}".format(path), 1)
-            print(e)
-
-    def OnPokeButtonLoad(self):
+    def OnProcessButtonLoad(self):
         path = self.ui_edit_ppath.text()
+        self.worker_process_load.emit(path)
 
-        if not path.endswith(".json"):
-            self.log("File for loading pokes needs to be a JSON (.json) file!", 1)
-            return
-
-        #load pokes from file
-        try:
-            f = open(path, "r")
-            pokes = json.load(f)
-            self.pokes = []
-            for i in range(len(pokes)):
-                self.pokes.append([])
-                for j in range(len(pokes[i])):
-                    self.pokes[i].append(np.array(pokes[i][j]))
-                    if i==self.current_frame_index:
-                        self.ui_combo_poke.addItem("[{},{},{},{}]".format(pokes[i][j][0],pokes[i][j][1],pokes[i][j][2],pokes[i][j][3]))
-            f.close()
-            self.log("Successfully loaded pokes from {}".format(path))
-        except Exception as e:
-            self.log("Failed loading pokes from {}".format(path), 1)
-            print(e)
-            
-            #reset pokes
-            for i in range(self.video_metadata["num_frames"]-1):
-                self.pokes.append([]) #add an empty set pokes per frame
-        
-        if len(self.pokes)<self.video_metadata["num_frames"]-1:
-            missing = self.video_metadata["num_frames"]-1-len(self.pokes)
-            for i in range(missing):
-                self.pokes.append([])
-            self.log("Loaded pokes are too short! Appending empty poke sets.", 1)
-        elif len(self.pokes)>self.video_metadata["num_frames"]-1:
-            missing = len(self.pokes)-self.video_metadata["num_frames"]-1
-            for i in reversed(range(missing)):
-                del self.pokes[-1]
-            self.log("Loaded pokes are too long! Removing additional poke sets.", 1)
-
-        self.ui_label_video.updatePokes(self.pokes[self.current_frame_index])
-        self.ui_label_flow.updatePokes(self.pokes[self.current_frame_index])
-
-    def OnPokeButtonClear(self):
-        self.pokes[self.current_frame_index] = []
-        self.ui_label_video.updatePokes()
-        self.ui_label_flow.updatePokes()
-        self.ui_combo_poke.clear()
-        self.log("Clearing current frame pokes ...")
-    
-    def OnPokeButtonClearAll(self):
-        for i in range(len(self.pokes)):
-            self.pokes[i] = []
-        self.ui_label_video.updatePokes()
-        self.ui_label_flow.updatePokes()
-        self.ui_combo_poke.clear()
-        self.log("Clearing all pokes ...")
-
-    ###########################
-    def OnVideoCalculate(self):
-        if self.video is None:
-            return
-        #get device
-        device = self.ui_combo_device.currentText()
-        device = torch.device(device)
-
-        rel_flow = self.ui_checkbox_rel_flow.isChecked()
-        text = self.ui_edit_chunk_size.text()
-        chunk_size = int(text)
-
-        self.setEnabled(False)
-        start_time = time.time()
-        self.raft_model = self.raft_model.to(device)
-        padder = InputPadder(self.video.size(), mode="sintel")
-
-        flows = []
-        if rel_flow:
-            start_frame = self.video[0:1].to(device)
-            start_frame = (start_frame.float()/255.0-0.5)/0.5 #map to [-1,1]
-            start_frame = padder.pad(start_frame)[0]
-        chunk_size = self.video.size(0) if chunk_size<=0 else chunk_size #we are measuring in flow frames!
-        num_chunks = int(np.ceil(self.video.size(0)/chunk_size))
-        for i in range(num_chunks):
-            start = i*chunk_size
-            end = min(self.video.size(0), (i+1)*chunk_size+1)
-            if end-start==1: #for last frame no flow exists anyways
-                break
-            clip = self.video[start:end].to(device)
-            clip = (clip.float()/255.0-0.5)/0.5 #map to [-1,1]
-            clip = padder.pad(clip)[0]
-            if not rel_flow:
-                flow = self.raft_model(clip[0:-1], clip[1:])[-1]
+    def OnIntClip(self):
+        low = self.ui_edit_int_low.text()
+        if len(low)>0:
+            if low.isnumeric():
+                low = int(low)
             else:
-                flow = self.raft_model(start_frame.repeat(clip.size(0)-1,1,1,1), clip)[-1]
-            flow = padder.unpad(flow)
-            flows.append(flow.cpu())
-        self.flow = torch.cat(flows, dim=0)
-        if rel_flow:
-            self.flow = self.flow[1:] #remove first flow frame as it will be just 0
-            del start_frame
-        del clip
+                low = None
+        else:
+            low = None
 
-        end_time = time.time()
-        self.setEnabled(True)
+        high = self.ui_edit_int_high.text()
+        if len(high)>0:
+            if high.isnumeric():
+                high = int(high)
+            else:
+                high = None
+        else:
+            high = None
 
-        self.log("Flow calculated (time taken: {:.3f}s)!".format(end_time-start_time))
+        self.image_view_contrast = np.copy(self.image_view)
+        if high is not None:
+            self.image_view_contrast[self.image_view_contrast>high] = high
+        if low is not None:
+            self.image_view_contrast -= low
+            self.image_view_contrast[self.image_view_contrast<0] = 0
 
-        self.SetCurrentFrame()
+        self.updateView()
+
+    def OnModeSelect(self):
+        index = self.ui_combo_mode.currentIndex()
+
+        if index==0:
+            self.request_frame.emit("frame", self.current_frame_index)
+        elif index==1:
+            self.request_frame.emit("mean", -1)
+        elif index==2:
+            self.request_frame.emit("median", -1)
+        elif index==3:
+            self.request_frame.emit("std", -1)
+        elif index==4:
+            self.request_frame.emit("max", -1)
+        elif index==5:
+            self.request_frame.emit("max_corr", -1)
 
     def OnPrevFrame(self):
         if self.current_frame_index-1>=0:
             next_frame = self.current_frame_index-1
         else:
-            next_frame = self.video.size(0)-1 #start again from last frame
+            next_frame = self.video_metadata["num_frames"]-1 #start again from last frame
+            
         #get current postion
         self.ui_slider_t.blockSignals(True)
         self.ui_slider_t.setValue(next_frame)
         self.ui_slider_t.blockSignals(False)
 
         self.current_frame_index = next_frame
-        self.SetCurrentFrame() #update slider
+        self.SetCurrentFrame()
 
     def OnNextFrame(self):
-        if self.current_frame_index+1<self.video.size(0)-1:
+        if self.current_frame_index+1<self.video_metadata["num_frames"]:
             next_frame = self.current_frame_index+1
         else:
             next_frame = 0 #start again from first frame
@@ -506,17 +560,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_slider_t.blockSignals(False)
 
         self.current_frame_index = next_frame
-        self.SetCurrentFrame() #update slider
+        self.SetCurrentFrame()
 
     def OnSetFrame(self):
         path = self.ui_edit_t.text()
         if not path.isnumeric():
-            self.log("Frame index is not numeric!", 1)
+            print("Frame index is not numeric!")
             return
         
         index = int(path)
-        if index<0 or index>=self.video.size(0)-1:
-            self.log("Cannot set frame due to wrong length!",1)
+        if index<0 or index>=self.video_metadata["num_frames"]:
+            print("Cannot set frame due to wrong length!")
             return
         
         if index!=self.current_frame_index:
@@ -525,7 +579,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui_slider_t.blockSignals(False)
 
             self.current_frame_index = index
-            self.SetCurrentFrame() #update slider
+            self.SetCurrentFrame()
 
     def OnSliderT(self):
         val = self.ui_slider_t.value()
@@ -534,96 +588,63 @@ class MainWindow(QtWidgets.QMainWindow):
         self.SetCurrentFrame()
 
     def SetCurrentFrame(self):
-        if self.video is not None:
-            #get current index
-            frame = self.video[self.current_frame_index]
-            self.ui_label_video.setImage(torch.movedim(frame, 0, 2).numpy(), self.pokes[self.current_frame_index])
+        if self.is_video_loaded:
+            curmode = self.ui_combo_mode.currentIndex()
+            if curmode==0:
+                self.request_frame.emit("frame", self.current_frame_index)
 
-            if self.flow is not None:
-                flow = self.flow[self.current_frame_index]
-                flow = flow_to_image(flow.unsqueeze(0).squeeze(0))
-                self.ui_label_flow.setImage(torch.movedim(flow, 0, 2).numpy(), self.pokes[self.current_frame_index])
-                mag = torch.sqrt(torch.sum(torch.pow(flow, 2),dim=1)).numpy()
+    def OnReceiveFrame(self, frame):
+        self.image_view = frame
+        self.OnIntClip()
 
-            #add pokes to combobox
-            self.ui_edit_poke1.setText("")
-            self.ui_edit_poke2.setText("")
-            self.ui_combo_poke.clear()
-            for i in range(len(self.pokes[self.current_frame_index])):
-                p = self.pokes[self.current_frame_index][i]
-                self.ui_combo_poke.addItem("[{},{},{},{}]".format(p[0],p[1],p[2],p[3]))
+    def OnViewMouseMove(self, x: int, y: int):
+        val = self.ui_slider_zoom.value()
+        fac = int(self.default_zoom*val)
+        shiftx = int(self.ui_slider_shiftx.value())
+        shifty = int(self.ui_slider_shifty.value())
 
+        x = int(x/fac)+shiftx
+        y = int(y/fac)+shifty
 
-    def OnMouseMove(self, x: int, y: int):
         self.ui_label_pos.setText("[{},{}]".format(x,y))
-        if self.flow is not None:
-            if x>=0 and x<self.flow.size(-1) and y>=0 and y<self.flow.size(-2):
-                poke = self.flow[self.current_frame_index,:,y,x].numpy()
-                pokemag = np.sqrt(np.sum(poke**2))
-                self.ui_label_flowmag.setText("{}".format(int(pokemag)))
+        intensity = int(self.image_view[y,x])
+        self.ui_label_value2.setText("{}".format(intensity))
 
-    def OnMouseClicked(self, x: int, y: int, action: int):
-        found = False
-        found_index = -1
-        for i in range(len(self.pokes[self.current_frame_index])):
-            if self.pokes[self.current_frame_index][i][0]==x and self.pokes[self.current_frame_index][i][1]==y:
-                found = True
-                found_index = i
-                break
+    def OnViewMouseClicked(self, x: int, y: int, action: int):
+        val = self.ui_slider_zoom.value()
+        fac = int(self.default_zoom*val)
+        shiftx = int(self.ui_slider_shiftx.value())
+        shifty = int(self.ui_slider_shifty.value())
 
-        if not found and action==1:
-            self.log("Adding poke at x={} y={}".format(x, y))
-            if self.flow is None:
-                self.pokes[self.current_frame_index].append(np.array([x,y,0,0], dtype=int))
-            else:
-                flowx = int(self.flow[self.current_frame_index,0,y,x].item())
-                flowy = int(self.flow[self.current_frame_index,1,y,x].item())
-                self.pokes[self.current_frame_index].append(np.array([x,y,x+flowx,y+flowy], dtype=int))
-            pokes = self.pokes[self.current_frame_index][-1]
-            self.ui_combo_poke.addItem("[{},{},{},{}]".format(pokes[0], pokes[1], pokes[2], pokes[3]))
-        elif found and action==0:
-            del self.pokes[self.current_frame_index][found_index]
-            self.ui_combo_poke.removeItem(found_index)
-            self.log("Removing poke at x={} y={}".format(x, y))
+        x = int(x/fac)+shiftx
+        y = int(y/fac)+shifty
 
-        self.ui_label_video.updatePokes(self.pokes[self.current_frame_index])
-        self.ui_label_flow.updatePokes(self.pokes[self.current_frame_index])
+        if x<self.image_view.shape[1] and y<self.image_view.shape[0]:
+            if self.current_mask_index>=0:
+                #check if pixel is in list
+                array = np.array([[y,x]])
 
-    def OnPokeButtonAdd(self):
-        text1 = self.ui_edit_poke1.text()
-        text2 = self.ui_edit_poke2.text()
+                is_in_list = np.all(array==self.masks[self.current_mask_index]["coordinates"], axis=1)
+                print(is_in_list)
 
-        if not text1.isnumeric():
-            self.log("Start position X is not numeric!", 1)
-            return
-        if not text2.isnumeric():
-            self.log("Start position Y is not numeric!", 1)
-            return
-        
-        pos1 = int(text1)
-        pos2 = int(text2)
+                if not np.any(is_in_list) and action==1:
+                    self.masks[self.current_mask_index]["coordinates"] = np.concatenate([self.masks[self.current_mask_index]["coordinates"], array], axis=0)
+                    self.updateView()
+                elif np.any(is_in_list) and action==0:
+                    index = np.where(is_in_list)[0]
+                    self.masks[self.current_mask_index]["coordinates"] = np.delete(self.masks[self.current_mask_index]["coordinates"], index, axis=0)
+                    self.updateView()
 
-        if pos1<0 and pos1>self.video.size(-1):
-            self.log("Start position X is out of bound!", 1)
-            return
-        if pos2<0 and pos2>self.video.size(-2):
-            self.log("Start position Y is out of bound!", 1)
-            return
-        
-        self.ui_label_video.pokes.append(np.array([pos1,pos2], dtype=int))
-        self.ui_label_video.updateCanvas()
-        self.ui_label_flow.pokes.append(np.array([pos1,pos2], dtype=int))
-        self.ui_label_flow.updateCanvas()
-        self.OnMouseClicked(pos1,pos2,1)   
+    ###################
+    def OnMeasureButtonRun(self):
+        if self.current_mask_index>=0:
+            safety_margin = self.ui_slider_safety_margin.value()
+            background_margin = self.ui_slider_background_margin.value()
+            self.measure_mask.emit(self.masks[self.current_mask_index]["coordinates"], safety_margin, background_margin)
 
-    def OnPokeButtonDelete(self):
-        if self.ui_combo_poke.count()>0:
-            index = self.ui_combo_poke.currentIndex()
-            text = self.ui_combo_poke.currentText()[1:-1] #remove []
+    def OnMeasureReceive(self):
+        pass
 
-            pos1 = text.find(",")
-            x = int(text[:pos1])
-            pos2 = text.find(",", pos1+1)
-            y = int(text[pos1+1:pos2])
-            
-            self.OnMouseClicked(x,y,0) 
+    def OnMeasureButtonClear(self):
+        self.ui_label_signal.clear()
+        self.ui_label_histogram.clear()
