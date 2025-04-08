@@ -142,6 +142,19 @@
       <string>Delete All</string>
      </property>
     </widget>
+    <widget class="QPushButton" name="ui_button_mask_focus">
+     <property name="geometry">
+      <rect>
+       <x>40</x>
+       <y>140</y>
+       <width>101</width>
+       <height>31</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>Focus</string>
+     </property>
+    </widget>
    </widget>
    <widget class="QLabel" name="ui_label_x">
     <property name="geometry">

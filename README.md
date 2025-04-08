@@ -65,6 +65,12 @@ A few unconditional examples drawn from the latent video transformer around 7k s
 <br>
 <img src="media/unconditional_sample.gif" width=776 height=260/>
 
+
+### CA-Label Software
+Along with this repository comes a simply calcium imaging labeling software which is currently still in development.
+<br>
+<img src="media/ca_label_screenshot.png" width=1024 height=1024/>
+
 ## Credits
 This code base is inspired and partially borrows code and ideas from the following works. 
 Please also have a look at their repositories and appreciate their wounderful work:
