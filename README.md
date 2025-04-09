@@ -68,6 +68,16 @@ A few unconditional examples drawn from the latent video transformer around 7k s
 
 ### CA-Label Software
 Along with this repository comes a simply calcium imaging labeling software which is currently still in development.
+Basic recipe to label a calcium imaging video:
+- Enter video path and press 'Load'
+- Select the neighbouring pixels to use for correlation image calculation and press 'Pre-Process Data'
+- It is recommended to save the pre-processed data for later in an .npz file
+- If already a part of the video is annotated enter the path to the mask file (JSON) and press 'Load'
+- Pick a mask by clicking on the main view and then untick 'Pick Mode' to add (left click) or remove (right click) pixels from the current mask. Maybe zoom in and use the 'Focus' button to get a better view.
+- Alternatively, click 'Add' to create a new mask and then untick 'Pick Mode' and place the first pixel and then zoom in and focus for further labeling.
+- Select a mode to choose to see neurons better. The slider next to it can be used to control the alpha level of the masks.
+- To improve the contrast while labeling, insert lower and or upper intensity and then press 'Set'.
+- If a mask is annotated press 'Measure Mask' to obtain the average signal. Use margin sliders to estimate background signal. (in progress)
 <br>
 <img src="media/ca_label_screenshot.png" width=1024 height=1024/>
 

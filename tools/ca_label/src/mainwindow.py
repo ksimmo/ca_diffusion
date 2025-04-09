@@ -14,6 +14,8 @@ from PyQt6 import uic
 import numpy as np
 from skimage.transform import resize
 
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT
+
 from src.ca_worker import CalciumWorker
 
 
@@ -21,7 +23,7 @@ from src.ca_worker import CalciumWorker
 class MainWindow(QtWidgets.QMainWindow):
     worker_load = pyqtSignal(str, int)
     worker_unload = pyqtSignal()
-    worker_pre_process = pyqtSignal()
+    worker_pre_process = pyqtSignal(int)
     worker_process_save = pyqtSignal(str)
     worker_process_load = pyqtSignal(str)
     request_frame = pyqtSignal(str, int)
@@ -37,6 +39,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_slider_shiftx.setEnabled(False)
         self.ui_slider_shifty.setEnabled(False)
         self.ui_slider_zoom.setEnabled(False)
+        self.toolbar_signal = NavigationToolbar2QT(self.ui_canvas_signal.canvas, self.ui_widget_toolbar)
+        self.toolbar_histogram = NavigationToolbar2QT(self.ui_canvas_histogram.canvas, self.ui_widget_toolbar2)
+        self.OnMeasureButtonClear()
         self.ui_button_measure_run.setEnabled(False)
         self.ui_button_measure_clear.setEnabled(False)
 
@@ -44,8 +49,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_combo_mode.addItem("Mean")
         self.ui_combo_mode.addItem("Median")
         self.ui_combo_mode.addItem("Std")
-        self.ui_combo_mode.addItem("Max.")
-        self.ui_combo_mode.addItem("Max. Correlation")
+        self.ui_combo_mode.addItem("Maximum")
+        self.ui_combo_mode.addItem("Corr. Avg")
+        self.ui_combo_mode.addItem("Corr. Max")
 
         self.ui_combo_masks.clear()
         self.ui_combo_masks.addItem("None")
@@ -103,7 +109,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
         self.ui_button_measure_run.clicked.connect(self.OnMeasureButtonRun)
-        self.measure_mask.connect(self.ca_worker.request_track)
+        self.measure_mask.connect(self.ca_worker.request_measure)
+        self.ca_worker.transfer_measured.connect(self.OnMeasureReceive)
         self.ui_button_measure_clear.clicked.connect(self.OnMeasureButtonClear)
 
 
@@ -119,8 +126,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.zoom_factor = 1.0 #the current zoom factor
         self.inuse = False
         self.pixmap_view = QPixmap()
-        self.image_view = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8)
-        self.image_view_contrast = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8) #perform contrast calculations on here!
+        self.image_view = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)))
+        self.image_view_contrast = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom))) #perform contrast calculations on here!
 
     #override
     def closeEvent(self, event):
@@ -201,9 +208,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui_combo_mode.setEnabled(False)
 
         self.ui_label_view.clear()
-        self.image_view = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8)
-        self.image_view_contrast = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)), dtype=np.uint8)
-        self.ui_label_signal.clear()
+        self.image_view = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)))
+        self.image_view_contrast = np.zeros((int(1024/self.default_zoom), int(1024/self.default_zoom)))
+        self.OnMeasureButtonClear()
 
         self.ui_button_pre_process.setEnabled(True)
 
@@ -364,18 +371,41 @@ class MainWindow(QtWidgets.QMainWindow):
             mins = np.amin(coordinates, axis=0)
             maxs = np.amax(coordinates, axis=0)+1
 
-            center = (mins+maxs)*0.5
+            center = np.round((mins+maxs)*0.5).astype(int)
 
-            #TODO: adjust slidersx and y such that current mask pops up in current view
+            #adjust slidersx and y such that current mask pops up in current view
             val = self.ui_slider_zoom.value()
             fac = int(self.default_zoom*val)
+            curr_view_size = 1024//fac
+
+            shape = np.array(self.image_view.shape[:2])*fac
+            leftover = shape-1024
+
+            #we only allow shifting of original pixels
+            leftover = leftover//fac
+
+            yshift = 0
+            if center[0]+curr_view_size//2>self.image_view.shape[0]:
+                yshift = leftover[0]
+            elif center[0]-curr_view_size//2<0:
+                yshift = 0
+            else:
+                yshift = center[0]-curr_view_size//2
+
+            xshift = 0
+            if center[1]+curr_view_size//2>self.image_view.shape[1]:
+                xshift = leftover[1]
+            elif center[1]-curr_view_size//2<0:
+                xshift = 0
+            else:
+                xshift = center[1]-curr_view_size//2
 
             self.ui_slider_shiftx.blockSignals(True)
-            self.ui_slider_shiftx.setValue(0) #...
+            self.ui_slider_shiftx.setValue(xshift)
             self.ui_slider_shiftx.blockSignals(False)
 
             self.ui_slider_shifty.blockSignals(True)
-            self.ui_slider_shifty.setValue(0) #...
+            self.ui_slider_shifty.setValue(yshift) 
             self.ui_slider_shifty.blockSignals(False)
 
             self.updateView()
@@ -447,25 +477,37 @@ class MainWindow(QtWidgets.QMainWindow):
         #sliderx
         if leftover[1]>0:
             #TODO: rembember old position before zoom
+            cur_range = self.ui_slider_shiftx.maximum()
             shiftx = self.ui_slider_shiftx.value()
+
             self.ui_slider_shiftx.blockSignals(True)
             self.ui_slider_shiftx.setRange(0,int(leftover[1]))
             self.ui_slider_shiftx.setValue(0)
             self.ui_slider_shiftx.blockSignals(False)
             self.ui_slider_shiftx.setEnabled(True)
         elif leftover[1]<=0:
+            self.ui_slider_shiftx.blockSignals(True)
+            self.ui_slider_shiftx.setRange(0,0)
+            self.ui_slider_shiftx.setValue(0)
+            self.ui_slider_shiftx.blockSignals(False)
             self.ui_slider_shiftx.setEnabled(False)
 
         #slidery
         if leftover[0]>0:
             #TODO: rembember old position before zoom
+            cur_range = self.ui_slider_shifty.maximum()
             shifty = self.ui_slider_shifty.value()
+
             self.ui_slider_shifty.blockSignals(True)
             self.ui_slider_shifty.setRange(0,int(leftover[0]))
-            self.ui_slider_shifty.setValue(0) #sliders are not updated! why???
+            self.ui_slider_shifty.setValue(0)
             self.ui_slider_shifty.blockSignals(False)
             self.ui_slider_shifty.setEnabled(True)
         elif leftover[0]<=0:
+            self.ui_slider_shifty.blockSignals(True)
+            self.ui_slider_shifty.setRange(0,0)
+            self.ui_slider_shifty.setValue(0) #sliders are not updated! why???
+            self.ui_slider_shifty.blockSignals(False)
             self.ui_slider_shifty.setEnabled(False)
 
         self.updateView()
@@ -474,7 +516,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def OnPreProcessData(self):
         if self.is_video_loaded:
             self.ui_button_pre_process.setEnabled(False)
-            self.worker_pre_process.emit()
+            val = self.ui_spinbox_corr_kernel.value()
+            self.worker_pre_process.emit(val)
 
     def OnPreProcessFinished(self):
         self.ui_button_pre_process.setEnabled(True)
@@ -494,8 +537,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def OnIntClip(self):
         low = self.ui_edit_int_low.text()
         if len(low)>0:
-            if low.isnumeric():
-                low = int(low)
+            if low.replace(".", "", 1).isnumeric():
+                low = float(low)
             else:
                 low = None
         else:
@@ -503,8 +546,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         high = self.ui_edit_int_high.text()
         if len(high)>0:
-            if high.isnumeric():
-                high = int(high)
+            if high.replace(".", "", 1).isnumeric():
+                high = float(high)
             else:
                 high = None
         else:
@@ -533,7 +576,9 @@ class MainWindow(QtWidgets.QMainWindow):
         elif index==4:
             self.request_frame.emit("max", -1)
         elif index==5:
-            self.request_frame.emit("max_corr", -1)
+            self.request_frame.emit("corr_avg", -1)
+        elif index==6:
+            self.request_frame.emit("corr_max", -1)
 
     def OnPrevFrame(self):
         if self.current_frame_index-1>=0:
@@ -607,8 +652,8 @@ class MainWindow(QtWidgets.QMainWindow):
         y = int(y/fac)+shifty
 
         self.ui_label_pos.setText("[{},{}]".format(x,y))
-        intensity = int(self.image_view[y,x])
-        self.ui_label_value2.setText("{}".format(intensity))
+        intensity = self.image_view[y,x]
+        self.ui_label_value2.setText("{:.2f}".format(intensity))
 
     def OnViewMouseClicked(self, x: int, y: int, action: int):
         val = self.ui_slider_zoom.value()
@@ -618,22 +663,31 @@ class MainWindow(QtWidgets.QMainWindow):
 
         x = int(x/fac)+shiftx
         y = int(y/fac)+shifty
+        array = np.array([[y,x]])
 
         if x<self.image_view.shape[1] and y<self.image_view.shape[0]:
-            if self.current_mask_index>=0:
-                #check if pixel is in list
-                array = np.array([[y,x]])
 
-                is_in_list = np.all(array==self.masks[self.current_mask_index]["coordinates"], axis=1)
-                print(is_in_list)
+            pick_mode = self.ui_checkbox_mask_pick.isChecked()
+            if pick_mode:
+                #check if we clicked on a mask
+                for i,m in enumerate(self.masks):
+                    is_in_list = np.any(np.all(array==m["coordinates"], axis=1))
+                    if is_in_list:
+                        self.ui_combo_masks.setCurrentIndex(i+1)
+                        break
 
-                if not np.any(is_in_list) and action==1:
-                    self.masks[self.current_mask_index]["coordinates"] = np.concatenate([self.masks[self.current_mask_index]["coordinates"], array], axis=0)
-                    self.updateView()
-                elif np.any(is_in_list) and action==0:
-                    index = np.where(is_in_list)[0]
-                    self.masks[self.current_mask_index]["coordinates"] = np.delete(self.masks[self.current_mask_index]["coordinates"], index, axis=0)
-                    self.updateView()
+            else:
+                if self.current_mask_index>=0:
+                    #check if pixel is in list
+                    is_in_list = np.all(array==self.masks[self.current_mask_index]["coordinates"], axis=1)
+
+                    if not np.any(is_in_list) and action==1:
+                        self.masks[self.current_mask_index]["coordinates"] = np.concatenate([self.masks[self.current_mask_index]["coordinates"], array], axis=0)
+                        self.updateView()
+                    elif np.any(is_in_list) and action==0:
+                        index = np.where(is_in_list)[0]
+                        self.masks[self.current_mask_index]["coordinates"] = np.delete(self.masks[self.current_mask_index]["coordinates"], index, axis=0)
+                        self.updateView()
 
     ###################
     def OnMeasureButtonRun(self):
@@ -642,9 +696,32 @@ class MainWindow(QtWidgets.QMainWindow):
             background_margin = self.ui_slider_background_margin.value()
             self.measure_mask.emit(self.masks[self.current_mask_index]["coordinates"], safety_margin, background_margin)
 
-    def OnMeasureReceive(self):
-        pass
+    def OnMeasureReceive(self, data):
+        self.ui_canvas_signal.canvas.fig.clear()
+        ax = self.ui_canvas_signal.canvas.fig.add_subplot(111)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Intensity")
+        ax.plot(data["raw_signal"], color="black", lw=1, label="Raw Signal")
+        ax.legend()
+        self.ui_canvas_signal.canvas.draw()
+
+        self.ui_canvas_histogram.canvas.fig.clear()
+        ax = self.ui_canvas_histogram.canvas.fig.add_subplot(111)
+        ax.set_xlabel("Intensity")
+        ax.set_ylabel("Probability")
+        ax.plot(data["raw_dist"], drawstyle="steps", label="Raw Signal")
+        ax.legend()
+        self.ui_canvas_histogram.canvas.draw()
 
     def OnMeasureButtonClear(self):
-        self.ui_label_signal.clear()
-        self.ui_label_histogram.clear()
+        self.ui_canvas_signal.canvas.fig.clear()
+        ax = self.ui_canvas_signal.canvas.fig.add_subplot(111)
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Intensity")
+        self.ui_canvas_signal.canvas.draw()
+
+        self.ui_canvas_histogram.canvas.fig.clear()
+        ax = self.ui_canvas_histogram.canvas.fig.add_subplot(111)
+        ax.set_xlabel("Intensity")
+        ax.set_ylabel("Probability")
+        self.ui_canvas_histogram.canvas.draw()
