@@ -38,6 +38,8 @@ class CalciumDataset(torch.utils.data.Dataset):
                 metadata = {}
                 metadata["shape"] = h["images"].shape
                 metadata["max_intensity"] = float(h["images"].attrs["max_intensity"])
+                metadata["mean_intensity"] = float(h["images"].attrs["mean_intensity"])
+                metadata["std_intensity"] = float(h["images"].attrs["std_intensity"])
             except Exception as e:
                 print(e)
                 continue
@@ -147,3 +149,64 @@ class CalciumDataset(torch.utils.data.Dataset):
         if len(data)==2:
             element["segmap"] = data[1]
         return element
+    
+
+class CalciumMean(CalciumDataset):
+    def __init__(self, root_dir, crop_size=[64,64], num_crops_per_video=100, spatial_split=False, validation=False):
+        assert len(crop_size)==2, "Only spatial crops are supported!"
+        super().__init__(root_dir=root_dir, crop_size=crop_size, num_crops_per_video=num_crops_per_video)
+
+        self.spatial_split = spatial_split #use top quarter for validation
+        self.is_validation = validation
+
+        #pre calculate average projections and segmentation maps
+        self.segmaps = []
+        self.mean_projections = []
+        for i,v in enumerate(self.video_names):
+            f = open(os.path.join(self.root_dir, v, "data", "regions.json"), "r")
+            annotations = json.load(f)
+            f.close()
+            segmap = np.zeros(self.video_metadata[i]["shape"][1:])
+            for a in annotations:
+                coords = np.array(a["coordinates"])
+                segmap[coords[:,0], coords[:,1]] = 1
+
+            self.segmaps.append(segmap)
+
+            h = h5py.File(os.path.join(self.root_dir, v, "data", "{}.h5".format(v)), "r")
+
+            self.mean_projections.append(np.mean(h["images"][:], axis=(1,2)))
+            h.close()
+
+
+    def __getitem__(self, index):
+        video_index = index%len(self.video_names)
+        
+        #sample region
+        shape = self.video_metadata[video_index]["shape"][1:]
+        if self.spatial_split:
+            if self.is_validation: #top left quarter is for validation
+                starty = np.random.randint(shape[0]//2-self.crop_size[0])
+                startx = np.random.randint(shape[1]//2-self.crop_size[1])
+            else:
+                starty = np.random.randint(shape[0]-self.crop_size[0])
+                if starty<shape[0]//2:
+                    startx = np.random.randint(shape[1]//2, shape[1]-self.crop_size[1])
+                else:
+                    startx = np.random.randint(shape[1]-self.crop_size[1])
+        else:
+            starty = np.random.randint(shape[0]-self.crop_size[0])
+            startx = np.random.randint(shape[1]-self.crop_size[1])
+
+        crop = self.mean_projections[video_index][starty:starty+self.crop_size[0], startx:startx+self.crop_size[1]]
+        seg = self.segmaps[video_index][starty:starty+self.crop_size[0], startx:startx+self.crop_size[1]]
+
+        #augmentate
+        data = [np.expand_dims(crop, axis=0), np.expand_dims(seg, axis=0)]
+        data = self.augmentate(data)
+
+        data[0] = (data[0]-self.video_metadata[video_index]["mean_intensity"])/self.video_metadata[video_index]["std_intensity"]
+        
+        return {"mean_proj": data[0], "segmap": data[1]}
+
+    

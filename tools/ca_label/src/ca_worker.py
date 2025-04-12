@@ -86,7 +86,7 @@ class CalciumWorker(QObject):
 
                         corr = np.sum(diff[:,i,j].reshape(-1,1)*crop, axis=0)/(self.data_calculated["std_image"][i,j]*crop_std)
                         corr_image_avg[i,j] = np.mean(corr)/self.data.shape[0]
-                        corr_image_avg[i,j] = np.amax(corr/self.data.shape[0])
+                        corr_image_max[i,j] = np.amax(corr/self.data.shape[0])
                     self.progress_update.emit(int(i/self.data.shape[1]*40)+60)
                 self.data_calculated["corr_image_avg"] = corr_image_avg+1.0 #move from [-1,1] to [0,2] to match normalization in main view
                 self.data_calculated["corr_image_max"] = corr_image_max+1.0
@@ -127,7 +127,7 @@ class CalciumWorker(QObject):
         elif variant=="corr_max" and "corr_image_max" in self.data_calculated.keys():
             self.transfer_frame.emit(self.data_calculated["corr_image_max"])
 
-    def request_measure(self, coordinates, safety_margin=0, bg_margin=0):
+    def request_measure(self, coordinates, mask_map, safety_margin=0, bg_margin=0):
         mins = np.amin(coordinates, axis=0)
         maxs = np.amax(coordinates, axis=0)+1
         #add margins to maximum crop size
@@ -142,20 +142,20 @@ class CalciumWorker(QObject):
         mask[coordinates[:,0]-mins[0], coordinates[:,1]-mins[1]] = 1.0
 
         #perform opening operations to enlarge masks to get safety and background mask if necessary
-        #TODO: take care of other masks in that region
         safety_mask = None
-        if safety_margin>0:
-            safety_mask = np.copy(mask)
-            safety_mask = binary_dilation(safety_mask, iterations=safety_margin)
+        if safety_margin>0 and bg_margin>0: #we only need safety margin for bg
+            safety_mask = np.copy(mask_map[mins[0]:maxs[0], mins[1]:maxs[1]]) #calculate safety margin around every mask
+            safety_mask = binary_dilation(safety_mask, iterations=safety_margin).astype(float)
         
         bg_mask = None
         if bg_margin>0:
             bg_mask = np.copy(mask)
-            bg_mask = binary_dilation(bg_mask, iterations=safety_margin+bg_margin)
+            bg_mask = binary_dilation(bg_mask, iterations=safety_margin+bg_margin).astype(float)
             if safety_mask is not None:
                 bg_mask = bg_mask-safety_mask
             else:
-                bg_mask = bg_mask-mask
+                bg_mask = bg_mask-mask_map[mins[0]:maxs[0], mins[1]:maxs[1]]
+            bg_mask[bg_mask<0] = 0.0
 
         crop = self.data[:,mins[0]:maxs[0], mins[1]:maxs[1]]
 
@@ -171,6 +171,13 @@ class CalciumWorker(QObject):
         if bg_mask is not None:
             bg_signal = np.sum(crop*np.expand_dims(bg_mask, axis=0), axis=(1,2))/np.sum(bg_mask)
             temp["bg_signal"] = bg_signal
+
+            tmask = np.repeat(np.expand_dims(bg_mask, axis=0),crop.shape[0], axis=0)
+            raw_data_bg = crop[np.where(tmask>0)]
+            h2, ed = np.histogram(raw_data_bg, bins=amax+1, range=(0,amax+1), density=True)
+            temp["bg_dist"] = h2
+
+            #temp["fg_signal"] = raw_signal-0.7*bg_signal #maybe optimize for r
 
         self.transfer_measured.emit(temp)
 

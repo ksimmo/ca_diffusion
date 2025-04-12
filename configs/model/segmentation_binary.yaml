@@ -1,0 +1,22 @@
+_target_: ca_diffusion.models.segmentation.BinarySegmentationModel
+
+model:
+  _target_: ca_diffusion.modules.networks.segmentation.unet2d.UNet
+  channels_in: 3
+  channels_out: 1
+  channels: 32
+  channel_mult: [2,4,8]
+  num_blocks: 2
+  attn_res: [4,-1]
+  num_heads: 8
+  qkv_bias: True
+  qk_norm: True
+  compile: False
+  use_checkpoint: False
+
+
+optimizer:
+  _target_: torch.optim.AdamW
+  _partial_: True
+  lr: 1e-4
+  weight_decay: 0.0

@@ -27,7 +27,7 @@ class MainWindow(QtWidgets.QMainWindow):
     worker_process_save = pyqtSignal(str)
     worker_process_load = pyqtSignal(str)
     request_frame = pyqtSignal(str, int)
-    measure_mask = pyqtSignal(np.ndarray, int, int)
+    measure_mask = pyqtSignal(np.ndarray, np.ndarray, int, int)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -694,7 +694,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.current_mask_index>=0:
             safety_margin = self.ui_slider_safety_margin.value()
             background_margin = self.ui_slider_background_margin.value()
-            self.measure_mask.emit(self.masks[self.current_mask_index]["coordinates"], safety_margin, background_margin)
+
+            #create full mask
+            mask_map = np.zeros_like(self.image_view)
+            for m in self.masks:
+                mask_map[m["coordinates"][:,0],m["coordinates"][:,1]] = 1.0
+
+            self.measure_mask.emit(self.masks[self.current_mask_index]["coordinates"], mask_map, safety_margin, background_margin)
 
     def OnMeasureReceive(self, data):
         self.ui_canvas_signal.canvas.fig.clear()
@@ -702,6 +708,8 @@ class MainWindow(QtWidgets.QMainWindow):
         ax.set_xlabel("Time")
         ax.set_ylabel("Intensity")
         ax.plot(data["raw_signal"], color="black", lw=1, label="Raw Signal")
+        if "bg_signal" in data.keys():
+            ax.plot(data["bg_signal"], color="red", lw=1, label="Bg Signal", alpha=0.5)
         ax.legend()
         self.ui_canvas_signal.canvas.draw()
 
@@ -709,7 +717,9 @@ class MainWindow(QtWidgets.QMainWindow):
         ax = self.ui_canvas_histogram.canvas.fig.add_subplot(111)
         ax.set_xlabel("Intensity")
         ax.set_ylabel("Probability")
-        ax.plot(data["raw_dist"], drawstyle="steps", label="Raw Signal")
+        ax.plot(data["raw_dist"][2:], drawstyle="steps", color="black", label="Raw Signal") #ignore 0 entries
+        if "bg_dist" in data.keys():
+            ax.plot(data["bg_dist"][2:], drawstyle="steps", color="red", label="Bg Signal", alpha=0.5)
         ax.legend()
         self.ui_canvas_histogram.canvas.draw()
 

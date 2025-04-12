@@ -77,7 +77,7 @@ Basic recipe to label a calcium imaging video:
 - Alternatively, click 'Add' to create a new mask and then untick 'Pick Mode' and place the first pixel and then zoom in and focus for further labeling.
 - Select a mode to choose to see neurons better. The slider next to it can be used to control the alpha level of the masks.
 - To improve the contrast while labeling, insert lower and or upper intensity and then press 'Set'.
-- If a mask is annotated press 'Measure Mask' to obtain the average signal. Use margin sliders to estimate background signal. (in progress)
+- If a mask is annotated press 'Measure Mask' to obtain the average signal. Use margin sliders to estimate background signal.
 <br>
 <img src="media/ca_label_screenshot.png" width=1024 height=1024/>
 
