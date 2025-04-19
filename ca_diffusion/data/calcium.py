@@ -208,5 +208,45 @@ class CalciumMean(CalciumDataset):
         data[0] = (data[0]-self.video_metadata[video_index]["mean_intensity"])/self.video_metadata[video_index]["std_intensity"]
         
         return {"mean_proj": data[0], "segmap": data[1]}
+    
+
+#TODO: add support for multiple traces and do validation split!
+class CalciumTraces(CalciumDataset):
+    def __init__(self, root_dir, sequence_length=128, num_traces=1, validation=False):
+        super().__init__(root_dir=root_dir, crop_size=[64,64], num_crops_per_video=100)
+
+        self.sequence_length = sequence_length
+        self.num_traces = num_traces
+        self.is_validation = validation
+
+        #traces are lightweight store them in memory!
+        self.traces = []
+        h = h5py.File(os.path.join(root_dir, "traces.h5"), "r")
+        for n in self.video_names:
+            self.traces.append(h[n][()])
+        h.close()
+
+
+    def __getitem__(self, index):
+        video_index = index%len(self.video_names)
+
+        start_t = np.random.randint(self.traces[video_index].shape[1]-self.sequence_length)
+
+        trace = self.traces[video_index][start_t:start_t+self.sequence_length]
+        
+        if self.fixed_intensity_binning:
+            #make sure each video has the same intensity bin size
+            max_intensity = self.video_metadata[video_index]["max_intensity"]
+            if max_intensity>4000:
+                #rescale video nad fix the bins
+                trace = trace/max_intensity*4000.0
+                trace = np.floor(trace)
+            trace = trace/4000.0
+        else:
+            max_intensity = self.video_metadata[video_index]["max_intensity"]
+            trace = trace/max_intensity
+        trace = (trace-0.5)/0.5
+        
+        return {"trace": torch.FloatTensor(trace).unsqueeze(0)}
 
     
