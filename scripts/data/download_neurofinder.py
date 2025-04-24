@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../..")
+
 import os
 import io
 import argparse
@@ -10,6 +13,8 @@ import json
 from tqdm import tqdm
 
 import numpy as np
+
+from ca_diffusion.analysis.projections import calculate_projections
 
 names_train = ["00.00", "00.01", "00.02", "00.03", "00.04", "00.05", "00.06", "00.07", "00.08", "00.09", "00.10", "00.11",
 "01.00", "01.01", "02.00", "02.01", "03.00", "04.00", "04.01"]
@@ -28,6 +33,9 @@ if __name__=="__main__":
     save_path = os.path.join(opt.dir, "neurofinder")
 
     for n in names:
+        if os.path.exists(os.path.join(save_path, n, "data", "{}.h5".format(n))): #TODO: maybe add checksum comparison in future
+            continue
+
         print("[+]Downloading {}".format(n))
         wget.download(url+n+".zip", "temp.zip")
         
@@ -65,10 +73,15 @@ if __name__=="__main__":
             #save dataset attributes
             for k,v in infos.items():
                 dset.attrs[k] = v
-                
-            dset.attrs["mean_intensity"] = np.mean(dset[()])
-            dset.attrs["std_intensity"] = np.std(dset[()])
-            dset.attrs["max_intensity"] = np.amax(dset[()])
+
+            projections = calculate_projections(fil["images"][()], corr_neighbourhood=3)
+            for k,v in projections.items():
+                if k.endswith("_image"):
+                    dset = fil.create_dataset(k, shape=v.shape, dtype=np.float32)
+                    dset[()] = v
+
+                if k.endswith("_intensity"):
+                    fil["images"].attrs[k] = v
             fil.close()
             
             if not "test" in n:

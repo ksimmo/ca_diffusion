@@ -9,6 +9,10 @@ import lightning.pytorch as pl
 from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
+import numpy as np
+import skimage as ski
+from scipy import ndimage as ndi
+
 from ca_diffusion.tools.utils import disabled_train
 from ca_diffusion.modules.ema import EMA
 
@@ -18,7 +22,7 @@ class BinarySegmentationModel(pl.LightningModule):
                  model: nn.Module,
                  optimizer: torch.optim.Optimizer,
                  scheduler: torch.optim.lr_scheduler=None,
-                 data_key: str="image",
+                 data_keys: str="image",
                  target_key: str="segmap",
                  ema_update_steps: int=-1,
                  ema_smoothing_factor: float=0.999,
@@ -30,11 +34,13 @@ class BinarySegmentationModel(pl.LightningModule):
 
         self.save_hyperparameters(ignore=["model"]+ignore_param, logger=False) #do not add hyperparams to logger
 
-        self.data_key = data_key
+        self.data_keys = data_keys
         self.target_key = target_key
         self.ema_update_steps = ema_update_steps
 
         self.model = model
+
+        self.criterion = nn.BCEWithLogitsLoss() #TODO: adapt this in future!
 
         #set up EMA if necessary
         self.use_ema = self.ema_update_steps>0
@@ -86,8 +92,14 @@ class BinarySegmentationModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         log = {}
         batch = self.precompute(batch)
-        pred = self.model(batch[self.data_key])
-        loss = nn.BCEWithLogitsLoss(pred, batch[self.target_key])
+
+        source = []
+        for k in self.data_keys:
+            source.append(batch[k])
+        source = torch.cat(source, dim=1)
+
+        pred = self.model(source)
+        loss = self.criterion(pred, batch[self.target_key])
         log["train/bce"] = loss
         self.log_dict(log, prog_bar=True, logger=True, on_step=True, on_epoch=True)
         return loss
@@ -102,13 +114,75 @@ class BinarySegmentationModel(pl.LightningModule):
             #    print(name, torch.mean(param.grad))
     """
     
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx=0):
         log = {}
         batch = self.precompute(batch)
-        pred = self.model(batch[self.data_key])
-        loss = nn.BCEWithLogitsLoss(pred, batch[self.target_key])
+
+        source = []
+        for k in self.data_keys:
+            source.append(batch[k])
+        source = torch.cat(source, dim=1)
+
+        pred = self.model(source)
+        loss = self.criterion(pred, batch[self.target_key])
         log["val/bce"] = loss
         self.log_dict(log, prog_bar=True, logger=True, on_step=False, on_epoch=True)
+
+    def test_step(self, batch, batch_idx=0):
+        batch = self.precompute(batch)
+
+        source = []
+        for k in self.data_keys:
+            source.append(batch[k])
+        source = torch.cat(source, dim=1)
+
+        pred = self.model(source)
+
+        #evaluate model
+
+    @torch.no_grad()
+    def predict(self, batch, p=0.5, min_pixels=25, **kwargs):
+        batch = self.precompute(batch)
+
+        source = []
+        for k in self.data_keys:
+            source.append(batch[k])
+        source = torch.cat(source, dim=1)
+
+        pred = torch.sigmoid(self.model(source))
+        #hard decisions
+        pred[pred<p] = 0.0
+        pred[pred>=p] = 1.0
+
+        results = {"segmentation": pred.cpu().numpy()}
+
+        #now extract single objects
+        label_image = ski.measure.label(results["segmentation"], background=0)
+        regions = ski.measure.regionprops(label_image, intensity_image=None)
+
+        neurons = []
+        for r in regions:
+            if r["num_pixels"]<min_pixels:
+                continue
+
+            #ok we found a possible region -> try watershed segmentation (taken from scikit-image docs)
+            distance = ndi.distance_transform_edt(r["image"])
+            coords = ski.feature.peak_local_max(distance, footprint=np.ones((3, 3)), labels=r["image"])
+            mask = np.zeros(distance.shape, dtype=bool)
+            mask[tuple(coords.T)] = True
+            markers, _ = ndi.label(mask)
+            labels = ski.segmentation.watershed(-distance, markers, mask=r["image"])
+            regions2 = ski.measure.regionprops(labels, intensity_image=None)
+            if len(regions2)==1:
+                neurons.append({})
+            else:
+                for r2 in regions2:
+                    if r2["num_pixels"]<min_pixels:
+                        continue
+                    neurons.append({})
+        results["objects"] = neurons
+        return results
+
 
     def on_before_zero_grad(self, *args, **kwargs):
         if self.use_ema:
@@ -128,14 +202,31 @@ class BinarySegmentationModel(pl.LightningModule):
 
     
     def log_images(self, batch, **kwargs):
-        gt = batch[self.data_key]
+        gt = []
+        for k in self.data_keys:
+            gt.append(batch[k])
+        gt = torch.cat(gt, dim=1)
         batch = self.precompute(batch)
         segmap = batch[self.target_key]
         segmap = (segmap-0.5)/0.5
         with self.ema("Logging"):
-            pred = self.model(batch[self.data_key])
+            source = []
+            for k in self.data_keys:
+                source.append(batch[k])
+            source = torch.cat(source, dim=1)
+            pred = self.model(source)
             pred = (torch.sigmoid(pred)-0.5)/0.5
 
+        pred_hard = torch.clone(pred)
+        pred_hard[pred_hard<0.0] = -1.0
+        pred_hard[pred_hard>=0.0] = 1.0
+
         log = {}
-        log["samples"] = torch.cat([gt.unsqueeze(2), segmap.unsqueeze(2), pred.unsqueeze(2)], dim=2)
+        samples = []
+        for i in range(gt.size(1)):
+            samples.append(gt[:,i:i+1].unsqueeze(2))
+        samples.append(segmap.unsqueeze(2))
+        samples.append(pred.unsqueeze(2))
+        samples.append(pred_hard.unsqueeze(2))
+        log["samples"] = torch.cat(samples, dim=2)
         return log

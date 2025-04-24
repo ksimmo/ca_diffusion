@@ -25,7 +25,9 @@ class CalciumDataset(torch.utils.data.Dataset):
         self.descs = [] #h5 descriptors
         #load video information
         for f in os.listdir(root_dir):
-            if "test" in f: #do not load test videos
+            if f.endswith(".h5"):
+                continue
+            if "test" in f: #do not load test videos for now
                 continue
 
             try:
@@ -42,9 +44,9 @@ class CalciumDataset(torch.utils.data.Dataset):
                 metadata["std_intensity"] = float(h["images"].attrs["std_intensity"])
             except Exception as e:
                 print(e)
+                h.close()
                 continue
 
-            h.close()
             self.video_names.append(f)
             self.video_metadata.append(metadata)
             self.descs.append(None)
@@ -59,7 +61,7 @@ class CalciumDataset(torch.utils.data.Dataset):
         if self.descs[index] == None:
             self.descs[index] = h5py.File(os.path.join(self.root_dir, self.video_names[index], "data", "{}.h5".format(self.video_names[index])), "r")
 
-    def augmentate(self, args):
+    def augmentate(self, args, no_intensity_ids=[]):
         if np.random.uniform()>0.5:
             for i in range(len(args)):
                 args[i] = np.flip(args[i], axis=1)
@@ -72,11 +74,15 @@ class CalciumDataset(torch.utils.data.Dataset):
 
         #intensity augmentation
         if self.augment_intensity:
-            scale_factor = np.random.uniform(0.7, 1.3)
+            scale = 1.0
+            offset = 0.0
+            if np.random.random()>0.5:
+                scale = np.random.uniform(0.7, 1.3)
+            if np.random.random()>0.5:
+                offset = np.random.randint(0.0, self.metadata["std_intensity"])
             for i in range(len(args)):
-                args[i] = np.round(args[i]*scale_factor) #round to nearest integer
-
-            #TODO: maybe also add a constant offset
+                if i not in no_intensity_ids:
+                    args[i] = np.round(args[i]*scale+offset) #round to nearest integer
 
         for i in range(len(args)):
             if not self.image_mode:
@@ -162,6 +168,7 @@ class CalciumMean(CalciumDataset):
         #pre calculate average projections and segmentation maps
         self.segmaps = []
         self.mean_projections = []
+        self.std_projections = []
         for i,v in enumerate(self.video_names):
             f = open(os.path.join(self.root_dir, v, "data", "regions.json"), "r")
             annotations = json.load(f)
@@ -175,7 +182,13 @@ class CalciumMean(CalciumDataset):
 
             h = h5py.File(os.path.join(self.root_dir, v, "data", "{}.h5".format(v)), "r")
 
-            self.mean_projections.append(np.mean(h["images"][:], axis=(1,2)))
+            proj = h["mean_image"][()]
+            proj = (proj-np.mean(proj))/np.std(proj)
+            self.mean_projections.append(proj)
+
+            proj = h["std_image"][()]
+            proj = (proj-np.mean(proj))/np.std(proj)
+            self.std_projections.append(proj)
             h.close()
 
 
@@ -198,33 +211,40 @@ class CalciumMean(CalciumDataset):
             starty = np.random.randint(shape[0]-self.crop_size[0])
             startx = np.random.randint(shape[1]-self.crop_size[1])
 
-        crop = self.mean_projections[video_index][starty:starty+self.crop_size[0], startx:startx+self.crop_size[1]]
+        crop_mean = self.mean_projections[video_index][starty:starty+self.crop_size[0], startx:startx+self.crop_size[1]]
+        crop_std = self.mean_projections[video_index][starty:starty+self.crop_size[0], startx:startx+self.crop_size[1]]
         seg = self.segmaps[video_index][starty:starty+self.crop_size[0], startx:startx+self.crop_size[1]]
 
         #augmentate
-        data = [np.expand_dims(crop, axis=0), np.expand_dims(seg, axis=0)]
-        data = self.augmentate(data)
-
-        data[0] = (data[0]-self.video_metadata[video_index]["mean_intensity"])/self.video_metadata[video_index]["std_intensity"]
+        data = [np.expand_dims(crop_mean, axis=0), np.expand_dims(crop_std, axis=0), np.expand_dims(seg, axis=0)]
+        data = self.augmentate(data, no_intensity_ids=[0,1,2]) #do not perform intensity augmentation on segmentation!
         
-        return {"mean_proj": data[0], "segmap": data[1]}
+        return {"proj_mean": data[0], "proj_std": data[1], "segmap": data[2]}
     
 
 #TODO: add support for multiple traces and do validation split!
 class CalciumTraces(CalciumDataset):
-    def __init__(self, root_dir, sequence_length=128, num_traces=1, validation=False):
-        super().__init__(root_dir=root_dir, crop_size=[64,64], num_crops_per_video=100)
+    def __init__(self, root_dir, sequence_length=128, num_traces=1, fixed_intensity_binning=False, augment_intensity=False, validation=False):
+        super().__init__(root_dir=root_dir, fixed_intensity_binning=fixed_intensity_binning, augment_intensity=augment_intensity)
 
         self.sequence_length = sequence_length
         self.num_traces = num_traces
         self.is_validation = validation
+        self.total_traces = 0
 
         #traces are lightweight store them in memory!
         self.traces = []
         h = h5py.File(os.path.join(root_dir, "traces.h5"), "r")
         for n in self.video_names:
             self.traces.append(h[n][()])
+            self.total_traces += h[n].shape[0]
         h.close()
+
+    def __len__(self):
+        if self.num_traces==1:
+            return self.total_traces
+        else:
+            return super().__len__(self)
 
 
     def __getitem__(self, index):
@@ -233,6 +253,16 @@ class CalciumTraces(CalciumDataset):
         start_t = np.random.randint(self.traces[video_index].shape[1]-self.sequence_length)
 
         trace = self.traces[video_index][start_t:start_t+self.sequence_length]
+
+        if self.augment_intensity:
+            scale = 1.0
+            offset = 0.0
+            if np.random.random()>0.5:
+                scale = np.random.uniform(0.7, 1.3)
+            if np.random.random()>0.5:
+                offset = np.random.randint(0.0, self.metadata["std_intensity"])
+            trace = np.round(trace*scale+offset) #round to nearest integer
+
         
         if self.fixed_intensity_binning:
             #make sure each video has the same intensity bin size

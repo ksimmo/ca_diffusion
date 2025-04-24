@@ -1,3 +1,6 @@
+import sys
+sys.path.append("../..")
+
 import os
 import argparse
 
@@ -12,6 +15,8 @@ from botocore import UNSIGNED
 from botocore.config import Config
 
 from tqdm import tqdm
+
+from ca_diffusion.analysis.projections import calculate_projections
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -121,9 +126,15 @@ if __name__ == "__main__":
         #save dataset attributes
         for k,v in infos.items():
             dset.attrs[k] = np.array(v)
-            
-        dset.attrs["mean_intensity"] = np.mean(frames)
-        dset.attrs["std_intensity"] = np.std(frames)
+
+        projections = calculate_projections(fil["images"][()], corr_neighbourhood=3)
+        for k,v in projections.items():
+            if k.endswith("_image"):
+                dset = fil.create_dataset(k, shape=v.shape, dtype=np.float32)
+                dset[()] = v
+
+            if k.endswith("_intensity"):
+                fil["images"].attrs[k] = v
         fil.close()
 
         temp.close()

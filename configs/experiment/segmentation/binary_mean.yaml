@@ -8,17 +8,22 @@ tag: segmentation_binary_mean
 
 data:
   train:
-    batch_size: 4
+    batch_size: 20
     num_workers: 4
 
 model:
   model: 
-    channels_in: 1
+    channels_in: 2
     channel_mult: [2,4,4,8]
     num_blocks: 1
-  data_key: "mean_proj"
+  data_keys: ["proj_mean", "proj_std"]
   target_key: "segmap"
 
 trainer:
   gradient_clip_val: 1.0
   #precision: "bf16-mixed"
+  max_epochs: 100
+
+  callbacks:
+    image_logger_callback:
+      batch_frequency: 100
