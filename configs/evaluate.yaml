@@ -1,0 +1,13 @@
+defaults:
+  - _self_
+  - data: neurofinder_image
+  - trainer: default
+  - flags: default
+  - paths: default
+  - hydra: evaluate
+
+batch_size: 4
+
+tag: default
+cfg: ???
+ckpt: last

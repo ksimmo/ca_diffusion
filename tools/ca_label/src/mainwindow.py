@@ -226,7 +226,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         print("Current Video Unloaded")
 
-    def OnVideoLoaded(self, num_frames: int, frame0: np.ndarray):
+    def OnVideoLoaded(self, num_frames: int, frame0: np.ndarray, precalculated: bool):
         """
         Our video worker has loaded the video
         """
@@ -252,6 +252,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.ui_button_measure_run.setEnabled(True)
         self.ui_button_measure_clear.setEnabled(True)
+
+        if precalculated:
+            self.ui_combo_mode.setEnabled(True)
 
         print("Successfully loaded video!", num_frames)
 

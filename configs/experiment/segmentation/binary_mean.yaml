@@ -18,11 +18,13 @@ model:
     num_blocks: 1
   data_keys: ["proj_mean", "proj_std"]
   target_key: "segmap"
+  ema_update_steps: 1
 
 trainer:
   gradient_clip_val: 1.0
   #precision: "bf16-mixed"
   max_epochs: 100
+  accumulate_grad_batches: 2
 
   callbacks:
     image_logger_callback:

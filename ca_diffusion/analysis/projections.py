@@ -35,7 +35,7 @@ def calculate_projections(data, corr_neighbourhood=3):
                 corr = np.sum(diff[:,i,j].reshape(-1,1)*crop, axis=0)/(data_calculated["std_image"][i,j]*crop_std)
                 corr_image_avg[i,j] = np.mean(corr)/data.shape[0]
                 corr_image_max[i,j] = np.amax(corr/data.shape[0])
-        data_calculated["corr_image_avg"] = corr_image_avg #move from [-1,1] to [0,2] to match normalization in main view
-        data_calculated["corr_image_max"] = corr_image_max
+        data_calculated["corr_avg_image"] = corr_image_avg #move from [-1,1] to [0,2] to match normalization in main view
+        data_calculated["corr_max_image"] = corr_image_max
 
     return data_calculated

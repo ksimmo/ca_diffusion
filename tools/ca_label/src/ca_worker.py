@@ -7,7 +7,7 @@ import tifffile
 from scipy.ndimage import binary_dilation
 
 class CalciumWorker(QObject):
-    video_loaded =pyqtSignal(int, np.ndarray) #when we successfully loaded a video
+    video_loaded =pyqtSignal(int, np.ndarray, bool) #when we successfully loaded a video
     progress_update = pyqtSignal(int) #update the progress bar in main window
     pre_process_finished = pyqtSignal()
     transfer_frame = pyqtSignal(np.ndarray) #send a single frame for drawing
@@ -26,7 +26,7 @@ class CalciumWorker(QObject):
                 self.data = tifffile.imread(path)
                 if self.data.shape[0]>max_frames and max_frames>0:
                     self.data = self.data[:max_frames]
-                self.video_loaded.emit(self.data.shape[0], self.data[0])
+                self.video_loaded.emit(self.data.shape[0], self.data[0], False)
             except Exception as e:
                 print("Cannot load video!")
                 print(e)
@@ -37,8 +37,24 @@ class CalciumWorker(QObject):
                     self.data = f["images"][:max_frames] 
                 else:
                     self.data = f["images"][:] #load data, for now we only support laoding full data into memory
+
+                keys = list(f.keys())
+                counter = 0
+                for k in keys:
+                    if k.endswith("_image"):
+                        counter += 1
+
+                precalculated = counter>0
+                for k in keys:
+                    if k.endswith("_image"):
+                        self.data_calculated[k] = f[k][()]
+                        if "corr" in k:
+                            self.data_calculated[k] = (self.data_calculated[k]+1.0)*0.5 #map from [-1,1] to [0,1]
+                for k in f["images"].attrs.keys():
+                    if k.endswith("_intensity"):
+                        self.data_calculated[k] = f["images"].attrs[k]
                 f.close()
-                self.video_loaded.emit(self.data.shape[0], self.data[0])
+                self.video_loaded.emit(self.data.shape[0], self.data[0], precalculated)
             except Exception as e:
                 print("Cannot load video!")
                 print(e)
@@ -88,8 +104,8 @@ class CalciumWorker(QObject):
                         corr_image_avg[i,j] = np.mean(corr)/self.data.shape[0]
                         corr_image_max[i,j] = np.amax(corr/self.data.shape[0])
                     self.progress_update.emit(int(i/self.data.shape[1]*40)+60)
-                self.data_calculated["corr_image_avg"] = corr_image_avg+1.0 #move from [-1,1] to [0,2] to match normalization in main view
-                self.data_calculated["corr_image_max"] = corr_image_max+1.0
+                self.data_calculated["corr_avg_image"] = corr_image_avg+1.0 #move from [-1,1] to [0,2] to match normalization in main view
+                self.data_calculated["corr_max_image"] = corr_image_max+1.0
 
             self.progress_update.emit(100)
             self.pre_process_finished.emit()
@@ -122,10 +138,10 @@ class CalciumWorker(QObject):
             self.transfer_frame.emit(self.data_calculated["max_image"])
         elif variant=="median" and "median_image" in self.data_calculated.keys():
             self.transfer_frame.emit(self.data_calculated["median_image"])
-        elif variant=="corr_avg" and "corr_image_avg" in self.data_calculated.keys():
-            self.transfer_frame.emit(self.data_calculated["corr_image_avg"])
-        elif variant=="corr_max" and "corr_image_max" in self.data_calculated.keys():
-            self.transfer_frame.emit(self.data_calculated["corr_image_max"])
+        elif variant=="corr_avg" and "corr_avg_image" in self.data_calculated.keys():
+            self.transfer_frame.emit(self.data_calculated["corr_avg_image"])
+        elif variant=="corr_max" and "corr_max_image" in self.data_calculated.keys():
+            self.transfer_frame.emit(self.data_calculated["corr_max_image"])
 
     def request_measure(self, coordinates, mask_map, safety_margin=0, bg_margin=0):
         mins = np.amin(coordinates, axis=0)
